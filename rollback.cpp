@@ -31,6 +31,7 @@
 #include <algorithm>
 #include <stdexcept>
 #include <format>
+#include <cstdio>
 
 // ---------------------------------------------------------------------------
 // Minimal JSON helpers (no external dependency)
@@ -49,7 +50,19 @@ std::string jsonEscape(const std::string& s) {
             case '\n': out += "\\n";  break;
             case '\r': out += "\\r";  break;
             case '\t': out += "\\t";  break;
-            default:   out += c;      break;
+            default:
+                // Escape remaining control characters so the produced file
+                // is always valid JSON (raw 0x00-0x1F bytes are illegal in
+                // JSON and would corrupt the snapshot file).
+                if (static_cast<unsigned char>(c) < 0x20) {
+                    char buf[8];
+                    snprintf(buf, sizeof(buf), "\\u%04x",
+                             static_cast<unsigned char>(c));
+                    out += buf;
+                } else {
+                    out += c;
+                }
+                break;
         }
     }
     return out;
@@ -68,6 +81,41 @@ std::string jsonUnescape(const std::string& s) {
                 case 'n':  out += '\n'; ++i; break;
                 case 'r':  out += '\r'; ++i; break;
                 case 't':  out += '\t'; ++i; break;
+                case 'u': {
+                    // \uXXXX escape (produced by jsonEscape for control
+                    // characters; also handles 4-digit escapes in imported
+                    // files). Encodes the code point back to UTF-8.
+                    if (i + 5 < s.size()) {
+                        unsigned int code = 0;
+                        bool ok = true;
+                        for (int k = 1; k <= 4; ++k) {
+                            char c = s[i + 1 + k];
+                            unsigned int v;
+                            if (c >= '0' && c <= '9')       v = c - '0';
+                            else if (c >= 'a' && c <= 'f')  v = c - 'a' + 10;
+                            else if (c >= 'A' && c <= 'F')  v = c - 'A' + 10;
+                            else { ok = false; break; }
+                            code = (code << 4) | v;
+                        }
+                        if (ok) {
+                            if (code <= 0x7F) {
+                                out += static_cast<char>(code);
+                            } else if (code <= 0x7FF) {
+                                out += static_cast<char>(0xC0 | (code >> 6));
+                                out += static_cast<char>(0x80 | (code & 0x3F));
+                            } else {
+                                out += static_cast<char>(0xE0 | (code >> 12));
+                                out += static_cast<char>(0x80 | ((code >> 6) & 0x3F));
+                                out += static_cast<char>(0x80 | (code & 0x3F));
+                            }
+                            i += 5; // skip '\' 'u' + 4 hex digits
+                            break;
+                        }
+                    }
+                    // Not a valid \uXXXX escape; keep it literally.
+                    out += s[i];
+                    break;
+                }
                 default:   out += s[i]; break;
             }
         } else {

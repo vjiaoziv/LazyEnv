@@ -74,6 +74,12 @@
     // -----------------------------------------------------------------------
     function handleNative(d) {
         switch (d.action) {
+            case "error":
+                // Surface native-side failures (e.g. exceptions caught at the
+                // COM boundary) instead of silently ignoring them.
+                showToast(d.message || t("error.internal"), "error");
+                break;
+
             case "environmentsDetected":
                 detectedEnvironments = d.environments || [];
                 renderEnvironments();
@@ -125,7 +131,12 @@
                 break;
 
             case "snapshotCreated":
-                loadSnapshots();
+                if (d.error) {
+                    showToast(t("recovery.createFailed"), "error");
+                } else {
+                    showToast(t("recovery.createSuccess"), "success");
+                    loadSnapshots();
+                }
                 break;
 
             case "snapshotList":

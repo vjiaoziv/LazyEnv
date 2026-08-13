@@ -215,7 +215,17 @@ bool launchProcess(const std::string& cmdLine, HANDLE hWritePipe,
     si.wShowWindow = SW_HIDE;
 
     std::string fullCmd = "cmd /c " + cmdLine;
-    std::wstring wcmd(fullCmd.begin(), fullCmd.end());
+
+    // Convert the UTF-8 command line to UTF-16 properly. A naive
+    // byte-by-byte mapping (wstring(begin,end)) would garble any
+    // non-ASCII characters (e.g. Chinese paths or package names).
+    int wlen = MultiByteToWideChar(CP_UTF8, 0, fullCmd.c_str(), -1,
+                                   nullptr, 0);
+    std::wstring wcmd(wlen > 0 ? static_cast<size_t>(wlen) - 1 : 0, L'\0');
+    if (wlen > 0) {
+        MultiByteToWideChar(CP_UTF8, 0, fullCmd.c_str(), -1,
+                            wcmd.data(), wlen);
+    }
 
     return CreateProcessW(
         nullptr, wcmd.data(),

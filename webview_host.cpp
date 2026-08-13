@@ -166,12 +166,21 @@ void WebViewHost::setupMessageBridge() {
                     CoTaskMemFree(rawMsg);
 
                     if (messageHandler_) {
-                        std::string response = messageHandler_(msg);
-                        if (!response.empty()) {
-                            // This callback runs on the UI thread, so direct
-                            // delivery is safe here.
-                            std::wstring wjson = utf8ToWide(response);
-                            webview_->PostWebMessageAsString(wjson.c_str());
+                        try {
+                            std::string response = messageHandler_(msg);
+                            if (!response.empty()) {
+                                // This callback runs on the UI thread, so direct
+                                // delivery is safe here.
+                                std::wstring wjson = utf8ToWide(response);
+                                webview_->PostWebMessageAsString(wjson.c_str());
+                            }
+                        } catch (...) {
+                            // Never let a C++ exception escape through the COM
+                            // boundary: it would terminate the process with an
+                            // access violation ("memory could not be read").
+                            const wchar_t* errMsg =
+                                L"{\"action\":\"error\",\"message\":\"Internal native error\"}";
+                            webview_->PostWebMessageAsString(errMsg);
                         }
                     }
                 }

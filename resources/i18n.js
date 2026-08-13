@@ -175,6 +175,8 @@
             "recovery.createTitle":             "Create Snapshot",
             "recovery.descLabel":               "Description (optional)",
             "recovery.defaultDesc":             "Manual snapshot",
+            "recovery.createSuccess":           "Snapshot created successfully.",
+            "recovery.createFailed":            "Failed to create snapshot. Check that the LazyEnv data folder is writable.",
 
             // Summary
             "summary.title":                    "Summary",
@@ -190,6 +192,9 @@
 
             // Dialog
             "dialog.cancel":                    "Cancel",
+
+            // Errors
+            "error.internal":                   "Internal error occurred. Please try again.",
 
             // Language switcher
             "lang.label":                       "Language"
@@ -340,6 +345,8 @@
             "recovery.createTitle":             "\u521b\u5efa\u5feb\u7167",
             "recovery.descLabel":               "\u63cf\u8ff0\uff08\u53ef\u9009\uff09",
             "recovery.defaultDesc":             "\u624b\u52a8\u5feb\u7167",
+            "recovery.createSuccess":           "\u5feb\u7167\u521b\u5efa\u6210\u529f\u3002",
+            "recovery.createFailed":            "\u5feb\u7167\u521b\u5efa\u5931\u8d25\uff0c\u8bf7\u68c0\u67e5 LazyEnv \u6570\u636e\u76ee\u5f55\u662f\u5426\u53ef\u5199\u3002",
 
             // Summary
             "summary.title":                    "\u6458\u8981",
@@ -355,6 +362,9 @@
 
             // Dialog
             "dialog.cancel":                    "\u53d6\u6d88",
+
+            // Errors
+            "error.internal":                   "\u5185\u90e8\u9519\u8bef\uff0c\u8bf7\u91cd\u8bd5\u3002",
 
             // Language switcher
             "lang.label":                       "\u8bed\u8a00"

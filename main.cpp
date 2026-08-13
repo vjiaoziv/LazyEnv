@@ -546,6 +546,11 @@ std::string handleWebMessage(const std::string& message) {
     if (action == "createSnapshot") {
         std::string desc = extractJsonValue(message, "description");
         std::string id = g_rollback.createSnapshot(desc);
+        if (id.empty()) {
+            // Report the failure explicitly so the UI can show an error
+            // instead of silently doing nothing ("no reaction").
+            return "{\"action\":\"snapshotCreated\",\"id\":\"\",\"error\":true}";
+        }
         return std::format("{{\"action\":\"snapshotCreated\",\"id\":\"{}\"}}", jsonEscape(id));
     }
 
