@@ -12,6 +12,8 @@ RelWithDebInfo/
 # IDE files
 .vs/
 .vscode/
+.claude/
+.reasonix/
 *.user
 *.suo
 *.sln.docstates
@@ -42,3 +44,5 @@ resources/lazyenv.ico
 
 # cmd files
 versionmodifier.cmd
+
+reasonix.toml
