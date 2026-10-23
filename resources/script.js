@@ -329,6 +329,11 @@
                 handleProbeResult(d);
                 break;
 
+            case "systemCheckResults":
+                systemCheckData = d;
+                renderChecks();
+                break;
+
             case "wingetStatus":
                 renderCheckItem("winget", d.available);
                 break;
@@ -477,6 +482,25 @@
                     category: obj.category || "other"
                 });
             }, 600);
+        }
+        if (obj.action === "openUrl") {
+            window.open(obj.url, "_blank");
+        }
+        if (obj.action === "runSystemChecks") {
+            setTimeout(function () {
+                handleNative({
+                    action: "systemCheckResults",
+                    os: "Windows 11 (Build 26300, x64)",
+                    isElevated: true,
+                    devMode: true,
+                    diskFree: "85.4 GB",
+                    winget: true,
+                    scoop: true,
+                    npm: true,
+                    pip: true,
+                    webview2: true
+                });
+            }, 300);
         }
         if (obj.action === "checkWinget") {
             setTimeout(function () { handleNative({ action: "wingetStatus", available: true }); }, 300);
@@ -732,7 +756,28 @@
             else renderUpdatesHub();
             renderHomeMetrics();
         }
-        if (page === "settings") { loadEnvVars(); if (!pathDoctorReport) sendNative({ action: "pathDoctorDiagnose" }); }
+        if (page === "install") {
+            var emptyBox = document.getElementById("installEmptyBox");
+            var actBox = document.getElementById("installActiveBox");
+            if (installTotal === 0 && installResults.size === 0) {
+                if (emptyBox) emptyBox.style.display = "flex";
+                if (actBox) actBox.style.display = "none";
+                var pDesc = document.getElementById("installPageDesc");
+                if (pDesc) pDesc.textContent = t("install.emptyTitle");
+            } else {
+                if (emptyBox) emptyBox.style.display = "none";
+                if (actBox) actBox.style.display = "block";
+                var pDesc = document.getElementById("installPageDesc");
+                if (pDesc) pDesc.textContent = t("install.desc");
+            }
+        }
+        if (page === "settings") {
+            if (currentSettingsSubTab === "envvars") {
+                loadEnvVars();
+            } else if (currentSettingsSubTab === "doctor") {
+                if (!pathDoctorReport) sendNative({ action: "inspectPathDoctor" });
+            }
+        }
         if (page === "recipes") renderFeaturedRecipes();
         if (page === "syscheck") initCheck();
         if (page === "packages" && catalog.length === 0) sendNative({ action: "getCatalog" });
@@ -1248,42 +1293,102 @@
     // -----------------------------------------------------------------------
     // System Check
     // -----------------------------------------------------------------------
-    var checkStates = { os: null, webview2: true, winget: null };
+    var systemCheckData = null;
 
     function initCheck() {
-        checkStates.os = "Windows";
-        sendNative({ action: "checkWinget" });
-        renderChecks();
-    }
-
-    function renderCheckItem(name, ok) {
-        checkStates[name] = ok;
+        sendNative({ action: "runSystemChecks" });
         renderChecks();
     }
 
     function renderChecks() {
-        var items = [
-            { label: t("check.os"), value: checkStates.os || t("check.detecting"), ok: checkStates.os === "Windows" ? "ok" : null },
-            { label: t("check.webview2"), value: t("check.available"), ok: "ok" },
-            { label: t("check.winget"), value: checkStates.winget === null ? t("check.checking") : (checkStates.winget ? t("check.available") : t("check.notFound")), ok: checkStates.winget === null ? null : (checkStates.winget ? "ok" : "fail") }
+        var container = document.getElementById("syscheckGrid");
+        if (!container) return;
+
+        if (!systemCheckData) {
+            container.innerHTML = '<div class="card" style="grid-column:1/-1;padding:36px 24px;text-align:center;">' +
+                '<div class="spinner-sm" style="margin:0 auto 12px auto;"></div>' +
+                '<span class="text-secondary">' + esc(t("check.checking")) + '</span>' +
+                '</div>';
+            return;
+        }
+
+        var d = systemCheckData;
+        var cards = [
+            {
+                icon: "💻",
+                title: t("syscheck.os"),
+                value: d.os || "Windows (x64)",
+                status: t("syscheck.statusReady"),
+                badgeCls: "tag--winget"
+            },
+            {
+                icon: "🛡️",
+                title: t("syscheck.privilege"),
+                value: d.isElevated ? t("syscheck.privAdmin") : t("syscheck.privUser"),
+                status: d.isElevated ? t("syscheck.statusReady") : t("syscheck.statusWarning"),
+                badgeCls: d.isElevated ? "tag--winget" : "tag--pip"
+            },
+            {
+                icon: "🛠️",
+                title: t("syscheck.devMode"),
+                value: d.devMode ? t("syscheck.devModeOn") : t("syscheck.devModeOff"),
+                status: d.devMode ? t("syscheck.statusReady") : t("syscheck.statusWarning"),
+                badgeCls: d.devMode ? "tag--winget" : "tag--pip"
+            },
+            {
+                icon: "💾",
+                title: t("syscheck.storage"),
+                value: (d.diskFree || "Unknown") + " " + (currentLanguage === "zh-CN" ? "可用空间" : "Free"),
+                status: t("syscheck.statusReady"),
+                badgeCls: "tag--winget"
+            },
+            {
+                icon: "📦",
+                title: t("syscheck.pkgManagers"),
+                value: "WinGet: " + (d.winget ? "✓" : "✗") + " • NPM: " + (d.npm ? "✓" : "✗") + " • Pip: " + (d.pip ? "✓" : "✗") + " • Scoop: " + (d.scoop ? "✓" : "✗"),
+                status: (d.winget && d.npm) ? t("syscheck.statusReady") : t("syscheck.statusWarning"),
+                badgeCls: (d.winget && d.npm) ? "tag--winget" : "tag--pip"
+            },
+            {
+                icon: "🌐",
+                title: t("syscheck.webview2"),
+                value: t("check.available"),
+                status: t("syscheck.statusReady"),
+                badgeCls: "tag--winget"
+            }
         ];
 
-        var container = document.getElementById("checkResults");
-        container.innerHTML = items.map(function (c) {
-            var icon = "";
-            if (c.ok === "ok") icon = '<svg width="18" height="18" viewBox="0 0 16 16" fill="var(--success)"><path d="M16 8A8 8 0 1 1 0 8a8 8 0 0 1 16 0zm-3.97-3.03a.75.75 0 0 0-1.08.022L7.477 9.417 5.384 7.323a.75.75 0 0 0-1.06 1.06L6.97 11.03a.75.75 0 0 0 1.079-.02l3.992-4.99a.75.75 0 0 0-.01-1.05z"/></svg>';
-            else if (c.ok === "fail") icon = '<svg width="18" height="18" viewBox="0 0 16 16" fill="var(--error)"><path d="M16 8A8 8 0 1 1 0 8a8 8 0 0 1 16 0zM5.354 4.646a.5.5 0 1 0-.708.708L7.293 8l-2.647 2.646a.5.5 0 0 0 .708.708L8 8.707l2.646 2.647a.5.5 0 0 0 .708-.708L8.707 8l2.647-2.646a.5.5 0 0 0-.708-.708L8 7.293 5.354 4.646z"/></svg>';
-            else icon = '<div class="spinner-sm"></div>';
-            return '<div class="card-row"><div class="card-row__icon">' + icon + '</div>' +
-                '<div class="card-row__body"><div class="card-row__title">' + esc(c.label) + '</div>' +
-                '<div class="card-row__subtitle">' + esc(c.value) + '</div></div></div>';
-        }).join("");
+        var html = "";
+        cards.forEach(function (c) {
+            html += '<div class="syscheck-card">' +
+                '<div class="syscheck-card__header">' +
+                '<span class="syscheck-card__icon">' + c.icon + '</span>' +
+                '<span class="badge--source ' + c.badgeCls + '">' + esc(c.status) + '</span>' +
+                '</div>' +
+                '<div class="syscheck-card__title">' + esc(c.title) + '</div>' +
+                '<div class="syscheck-card__value">' + esc(c.value) + '</div>' +
+                '</div>';
+        });
+        container.innerHTML = html;
     }
 
-    document.getElementById("btnRunChecks").addEventListener("click", function () {
-        checkStates = { os: null, webview2: true, winget: null };
-        initCheck();
-    });
+    var btnRunChk = document.getElementById("btnRunChecks");
+    if (btnRunChk) {
+        btnRunChk.addEventListener("click", function () {
+            systemCheckData = null;
+            initCheck();
+        });
+    }
+
+    var btnChkRec = document.getElementById("btnSysCheckGoRecipes");
+    if (btnChkRec) {
+        btnChkRec.addEventListener("click", function () { navigateTo("recipes"); });
+    }
+
+    var btnChkPkg = document.getElementById("btnSysCheckGoPackages");
+    if (btnChkPkg) {
+        btnChkPkg.addEventListener("click", function () { navigateTo("packages"); });
+    }
 
     // -----------------------------------------------------------------------
     // Packages
@@ -1314,13 +1419,22 @@
             groups[cat].forEach(function (p) {
                 var sel = selectedPackages.has(p.id);
                 var iconSvg = window.LazyEnvIcons.getIcon(p.id || p.name, p.category);
+                var isInstalled = false;
+                var low = (p.id + " " + p.name).toLowerCase();
+                detectedEnvironments.forEach(function (e) {
+                    var elow = ((e.command || "") + " " + (e.name || "")).toLowerCase();
+                    if (low.includes((e.command || "").toLowerCase()) || elow.includes((p.name || "").toLowerCase())) {
+                        isInstalled = true;
+                    }
+                });
+                var instBadge = isInstalled ? ' <span class="badge--source" style="background:rgba(255,255,255,0.06);color:var(--text-tertiary);margin-left:6px;font-size:10px;">' + esc(t("common.installed")) + '</span>' : '';
                 html += '<div class="card-row card-row--selectable' + (sel ? ' card-row--selected' : '') + '" data-id="' + esc(p.id) + '">' +
                     '<div class="card-row__check">' +
                     '<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M13.854 3.646a.5.5 0 0 1 0 .708l-7 7a.5.5 0 0 1-.708 0l-3.5-3.5a.5.5 0 1 1 .708-.708L6.5 10.293l6.646-6.647a.5.5 0 0 1 .708 0z"/></svg>' +
                     '</div>' +
                     '<div class="card-row__icon">' + iconSvg + '</div>' +
                     '<div class="card-row__body">' +
-                    '<div class="card-row__title">' + esc(p.name) + '</div>' +
+                    '<div class="card-row__title">' + esc(p.name) + instBadge + '</div>' +
                     '<div class="card-row__subtitle">' + esc(p.description) + '</div>' +
                     '</div></div>';
             });
@@ -1602,8 +1716,55 @@
     // -----------------------------------------------------------------------
     function renderSummary() {
         var container = document.getElementById("summaryContent");
+        if (!container) return;
+
         if (installResults.size === 0) {
-            container.innerHTML = '<div class="empty-state">' + esc(t("summary.emptyState")) + '</div>';
+            var lastHist = null;
+            try {
+                var raw = localStorage.getItem("lazyenv_last_install");
+                if (raw) lastHist = JSON.parse(raw);
+            } catch(e) {}
+
+            if (lastHist && lastHist.items && lastHist.items.length > 0) {
+                var dStr = new Date(lastHist.time).toLocaleString();
+                var sCount = lastHist.items.filter(function(x) { return x.status === "success"; }).length;
+                var html = '<div class="card-box mb-lg">' +
+                    '<div class="flex-between mb-sm">' +
+                    '<div style="font-weight:600;font-size:15px;">' + esc(t("summary.historyTitle")) + '</div>' +
+                    '<span class="text-secondary" style="font-size:12px;">' + esc(dStr) + '</span>' +
+                    '</div>' +
+                    '<div class="doctor-metrics-grid mb-md">' +
+                    '<div class="metric-mini-card"><div class="metric-mini-card__label">' + esc(t("summary.colStatus")) + '</div><div class="metric-mini-card__value text-success">' + sCount + ' / ' + lastHist.total + '</div></div>' +
+                    '<div class="metric-mini-card"><div class="metric-mini-card__label">' + esc(t("recovery.createSuccess")) + '</div><div class="metric-mini-card__value" style="font-size:13px;word-break:break-all;">' + esc(lastHist.snapshotId ? lastHist.snapshotId.substring(0, 16) + '...' : 'None') + '</div></div>' +
+                    '</div>' +
+                    '<table class="data-table mb-md"><thead><tr><th>' + esc(t("summary.colName")) + '</th><th>' + esc(t("summary.colStatus")) + '</th><th>' + esc(t("summary.colMessage")) + '</th></tr></thead><tbody>';
+                lastHist.items.forEach(function (it) {
+                    var pkg = catalog.find(function (p) { return p.id === it.id; });
+                    var name = pkg ? pkg.name : it.id;
+                    var badgeCls = it.status === "success" ? "badge--source tag--winget" : "badge--source tag--pip";
+                    html += '<tr><td>' + esc(name) + '</td><td><span class="' + badgeCls + '">' + esc(it.status) + '</span></td><td>' + esc(it.message) + '</td></tr>';
+                });
+                html += '</tbody></table>' +
+                    '<div class="toolbar" style="margin-bottom:0">' +
+                    '<button class="btn btn--accent" id="btnSummGoHome">' + esc(t("summary.viewEnvs")) + '</button>' +
+                    '<button class="btn" id="btnSummGoPackages">' + esc(t("summary.goPackages")) + '</button>' +
+                    '</div></div>';
+                container.innerHTML = html;
+                var bHome = document.getElementById("btnSummGoHome");
+                if (bHome) bHome.addEventListener("click", function () { navigateTo("home"); });
+                var bPkg = document.getElementById("btnSummGoPackages");
+                if (bPkg) bPkg.addEventListener("click", function () { navigateTo("packages"); });
+                return;
+            }
+
+            container.innerHTML = '<div class="empty-state" style="padding:48px 24px;">' +
+                '<div class="empty-state__icon">📋</div>' +
+                '<div style="font-size:16px;font-weight:600;margin-bottom:8px;color:var(--text-primary);">' + esc(t("summary.noHistory")) + '</div>' +
+                '<div class="empty-state__text mb-lg" style="margin-bottom:16px;">' + esc(t("summary.noHistoryDesc")) + '</div>' +
+                '<button class="btn btn--accent" id="btnSummaryGoPkg">' + esc(t("summary.goPackages")) + '</button>' +
+                '</div>';
+            var bGo = document.getElementById("btnSummaryGoPkg");
+            if (bGo) bGo.addEventListener("click", function () { navigateTo("packages"); });
             return;
         }
 
@@ -1617,21 +1778,16 @@
         installResults.forEach(function (r, id) {
             var pkg = catalog.find(function (p) { return p.id === id; });
             var name = pkg ? pkg.name : id;
-            var badgeCls = "";
-            var badgeText = "";
-            switch (r.status) {
-                case "success": badgeCls = "badge--success"; badgeText = t("summary.success"); break;
-                case "failed":  badgeCls = "badge--error";   badgeText = t("summary.failed");  break;
-                case "skipped": badgeCls = "badge--warning"; badgeText = t("summary.skipped"); break;
-                default:        badgeCls = "";               badgeText = r.status;  break;
-            }
-            html += '<tr><td>' + esc(name) + '</td>' +
-                '<td><span class="badge ' + badgeCls + '">' + badgeText + '</span></td>' +
-                '<td class="text-mono text-sm">' + esc(r.command || "-") + '</td>' +
-                '<td class="text-sm">' + esc(r.output || r.message || "-") + '</td></tr>';
+            var statusClass = r.status === "success" ? "text-success" : (r.status === "error" ? "text-error" : "text-secondary");
+            html += '<tr>' +
+                '<td>' + esc(name) + '</td>' +
+                '<td class="' + statusClass + '">' + esc(r.status) + '</td>' +
+                '<td class="font-mono text-secondary" style="font-size:11px;">' + esc(r.command || "") + '</td>' +
+                '<td>' + esc(r.message || "") + '</td>' +
+                '</tr>';
         });
-
         html += '</tbody></table>';
+
         container.innerHTML = html;
     }
 
@@ -2774,3 +2930,63 @@
 
 })();
 
+
+    // -----------------------------------------------------------------------
+    // Settings Sub-Tabs & Preferences
+    // -----------------------------------------------------------------------
+    var currentSettingsSubTab = "doctor";
+    var settingsTabs = document.getElementById("settingsSubTabs");
+    if (settingsTabs) {
+        settingsTabs.addEventListener("click", function (e) {
+            var tab = e.target.closest(".tab");
+            if (!tab || !tab.dataset.subtab) return;
+            currentSettingsSubTab = tab.dataset.subtab;
+
+            settingsTabs.querySelectorAll(".tab").forEach(function (t) {
+                t.classList.toggle("tab--active", t.dataset.subtab === currentSettingsSubTab);
+            });
+
+            document.querySelectorAll(".settings-tab-pane").forEach(function (pane) {
+                pane.style.display = "none";
+            });
+
+            var activePane = document.getElementById("subtab-" + currentSettingsSubTab);
+            if (activePane) activePane.style.display = "block";
+
+            if (currentSettingsSubTab === "doctor" && !pathDoctorReport) {
+                sendNative({ action: "inspectPathDoctor" });
+            } else if (currentSettingsSubTab === "envvars") {
+                loadEnvVars();
+            }
+        });
+    }
+
+    var sLang = document.getElementById("settingsLangSelect");
+    if (sLang) {
+        sLang.value = currentLanguage;
+        sLang.addEventListener("change", function () {
+            var mainSel = document.getElementById("langSelect");
+            if (mainSel) {
+                mainSel.value = sLang.value;
+                mainSel.dispatchEvent(new Event("change"));
+            }
+        });
+    }
+
+    var btnGh = document.getElementById("btnOpenGitHub");
+    if (btnGh) {
+        btnGh.addEventListener("click", function () {
+            sendNative({ action: "openUrl", url: "https://github.com/vjiaoziv/LazyEnv" });
+        });
+    }
+
+    var chkStartup = document.getElementById("chkStartupUpdates");
+    if (chkStartup) {
+        var savedPref = localStorage.getItem("lazyenv_startup_updates");
+        if (savedPref !== null) {
+            chkStartup.checked = savedPref === "1";
+        }
+        chkStartup.addEventListener("change", function () {
+            localStorage.setItem("lazyenv_startup_updates", chkStartup.checked ? "1" : "0");
+        });
+    }

@@ -993,6 +993,90 @@ std::string handleWebMessage(const std::string& message) {
         return os.str();
     }
 
+    // ------ Open external URL ------
+    if (action == "openUrl") {
+        std::string url = extractJsonValue(message, "url");
+        if (!url.empty()) {
+            ShellExecuteA(NULL, "open", url.c_str(), NULL, NULL, SW_SHOWNORMAL);
+        }
+        return "{\"action\":\"openUrlResult\",\"success\":true}";
+    }
+
+    // ------ Comprehensive system checks ------
+    if (action == "runSystemChecks") {
+        SYSTEM_INFO si;
+        GetNativeSystemInfo(&si);
+        std::string arch = (si.wProcessorArchitecture == PROCESSOR_ARCHITECTURE_AMD64) ? "x64" :
+                           (si.wProcessorArchitecture == PROCESSOR_ARCHITECTURE_ARM64) ? "ARM64" : "x86";
+
+        std::string osName = "Windows";
+        std::string buildNum = "";
+        HKEY hKey;
+        if (RegOpenKeyExW(HKEY_LOCAL_MACHINE, L"SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion", 0, KEY_READ, &hKey) == ERROR_SUCCESS) {
+            wchar_t prod[256] = {0};
+            DWORD dwSize = sizeof(prod);
+            if (RegQueryValueExW(hKey, L"ProductName", NULL, NULL, (LPBYTE)prod, &dwSize) == ERROR_SUCCESS) {
+                int len = WideCharToMultiByte(CP_UTF8, 0, prod, -1, nullptr, 0, nullptr, nullptr);
+                if (len > 0) {
+                    std::string s(len - 1, '\0');
+                    WideCharToMultiByte(CP_UTF8, 0, prod, -1, s.data(), len, nullptr, nullptr);
+                    osName = s;
+                }
+            }
+            wchar_t build[64] = {0};
+            dwSize = sizeof(build);
+            if (RegQueryValueExW(hKey, L"CurrentBuild", NULL, NULL, (LPBYTE)build, &dwSize) == ERROR_SUCCESS) {
+                int len = WideCharToMultiByte(CP_UTF8, 0, build, -1, nullptr, 0, nullptr, nullptr);
+                if (len > 0) {
+                    std::string s(len - 1, '\0');
+                    WideCharToMultiByte(CP_UTF8, 0, build, -1, s.data(), len, nullptr, nullptr);
+                    buildNum = s;
+                }
+            }
+            RegCloseKey(hKey);
+        }
+
+        bool isElevated = lazyenv::PathDoctor::isProcessElevated();
+
+        bool devMode = false;
+        if (RegOpenKeyExW(HKEY_LOCAL_MACHINE, L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\AppModelUnlock", 0, KEY_READ, &hKey) == ERROR_SUCCESS) {
+            DWORD val = 0;
+            DWORD dwSize = sizeof(val);
+            if (RegQueryValueExW(hKey, L"AllowDevelopmentWithoutDevLicense", NULL, NULL, (LPBYTE)&val, &dwSize) == ERROR_SUCCESS) {
+                devMode = (val == 1);
+            }
+            RegCloseKey(hKey);
+        }
+
+        std::string diskFree = "Unknown";
+        ULARGE_INTEGER freeBytes{}, totalBytes{}, totalFree{};
+        if (GetDiskFreeSpaceExW(L"C:\\", &freeBytes, &totalBytes, &totalFree)) {
+            double freeGB = static_cast<double>(freeBytes.QuadPart) / (1024.0 * 1024.0 * 1024.0);
+            diskFree = std::format("{:.1f} GB", freeGB);
+        }
+
+        bool wingetOk = lazyenv::Installer::isWingetAvailable();
+        auto scoopP = lazyenv::createScoopProvider();
+        bool scoopOk = scoopP ? scoopP->isAvailable() : false;
+        auto npmP = lazyenv::createNpmProvider();
+        bool npmOk = npmP ? npmP->isAvailable() : false;
+        auto pipP = lazyenv::createPipProvider();
+        bool pipOk = pipP ? pipP->isAvailable() : false;
+
+        std::ostringstream ss;
+        ss << "{\"action\":\"systemCheckResults\","
+           << "\"os\":\"" << jsonEscape(osName + " (Build " + buildNum + ", " + arch + ")") << "\","
+           << "\"isElevated\":" << (isElevated ? "true" : "false") << ","
+           << "\"devMode\":" << (devMode ? "true" : "false") << ","
+           << "\"diskFree\":\"" << jsonEscape(diskFree) << "\","
+           << "\"winget\":" << (wingetOk ? "true" : "false") << ","
+           << "\"scoop\":" << (scoopOk ? "true" : "false") << ","
+           << "\"npm\":" << (npmOk ? "true" : "false") << ","
+           << "\"pip\":" << (pipOk ? "true" : "false") << ","
+           << "\"webview2\":true}";
+        return ss.str();
+    }
+
     // ------ Check winget ------
     if (action == "checkWinget") {
         bool ok = lazyenv::Installer::isWingetAvailable();

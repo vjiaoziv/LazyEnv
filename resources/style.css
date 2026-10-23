@@ -1343,3 +1343,125 @@ textarea.input {
         grid-template-columns: 1fr;
     }
 }
+
+/* ============================================================================
+   System Check Grid & Status Cards
+   ============================================================================ */
+.syscheck-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+}
+@media (max-width: 900px) {
+    .syscheck-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+@media (max-width: 600px) {
+    .syscheck-grid {
+        grid-template-columns: 1fr;
+    }
+}
+.syscheck-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    padding: 14px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    transition: all 0.2s cubic-bezier(0.1, 0.9, 0.2, 1);
+}
+.syscheck-card:hover {
+    background: var(--bg-card-hover);
+    border-color: var(--border-default);
+    transform: translateY(-1px);
+}
+.syscheck-card__header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+.syscheck-card__icon {
+    font-size: 20px;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.syscheck-card__title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+.syscheck-card__value {
+    font-size: 13px;
+    color: var(--text-secondary);
+    word-break: break-all;
+    font-family: var(--font-mono, monospace);
+}
+
+/* ============================================================================
+   Sticky Bottom Action Bar for Packages
+   ============================================================================ */
+.sticky-bottom-bar {
+    position: sticky;
+    bottom: -24px;
+    margin: 24px -24px -24px -24px;
+    padding: 14px 24px;
+    background: rgba(30, 30, 30, 0.92);
+    backdrop-filter: blur(20px);
+    border-top: 1px solid var(--border-subtle);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    z-index: 100;
+    box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.4);
+}
+.sticky-bottom-bar__count {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+/* ============================================================================
+   Toggle Switch for Settings Preferences
+   ============================================================================ */
+.toggle-switch {
+    position: relative;
+    display: inline-block;
+    width: 44px;
+    height: 22px;
+}
+.toggle-switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+.toggle-slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background-color: rgba(255, 255, 255, 0.15);
+    transition: .2s;
+    border-radius: 22px;
+    border: 1px solid var(--border-subtle);
+}
+.toggle-slider:before {
+    position: absolute;
+    content: "";
+    height: 16px;
+    width: 16px;
+    left: 2px;
+    bottom: 2px;
+    background-color: white;
+    transition: .2s;
+    border-radius: 50%;
+}
+.toggle-switch input:checked + .toggle-slider {
+    background-color: var(--accent);
+}
+.toggle-switch input:checked + .toggle-slider:before {
+    transform: translateX(22px);
+}

@@ -108,7 +108,7 @@
         </div>
 
         <div class="sidebar__footer">
-            <span class="sidebar__version">LazyEnv v0.7.0</span>
+            <span class="sidebar__version">LazyEnv v0.8.0</span>
             <select class="sidebar__lang-select" id="langSelect">
                 <option value="en">English</option>
                 <option value="zh-CN">中文</option>
@@ -400,106 +400,164 @@
 
             <!-- ==================== SETTINGS ==================== -->
             <div class="page" id="page-settings">
-                <h1 class="page-title" data-i18n="settings.title">Settings</h1>
-                <p class="page-desc" data-i18n="settings.desc">Manage environment variables directly. Changes take effect immediately.</p>
+                <h1 class="page-title" data-i18n="settings.title">Settings & Governance</h1>
+                <p class="page-desc" data-i18n="settings.desc">Manage PATH doctor diagnostics, environment variables, and system preferences.</p>
 
-                <div class="info-box info-box--info mb-lg">
-                    <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" style="flex-shrink:0;margin-top:2px;color:var(--accent)"><path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0-1A6 6 0 1 0 8 2a6 6 0 0 0 0 12zm-.5-9h1v1h-1V5zm0 2h1v4h-1V7z"/></svg>
-                    <span data-i18n="settings.snapshotHint">A snapshot will be automatically created before any modification for safe rollback.</span>
+                <!-- Settings Sub-Tabs -->
+                <div class="tabs mb-lg" id="settingsSubTabs">
+                    <button class="tab tab--active" data-subtab="doctor" data-i18n="settings.tabDoctor">PATH Doctor</button>
+                    <button class="tab" data-subtab="envvars" data-i18n="settings.tabEnvVars">Environment Variables</button>
+                    <button class="tab" data-subtab="preferences" data-i18n="settings.tabPreferences">Preferences</button>
                 </div>
 
-                <!-- PATH Doctor Health Dashboard -->
-                <div class="card-box mb-lg" id="pathDoctorBox">
-                    <div class="flex-between mb-sm">
-                        <div class="flex-align-center" style="gap:12px;">
-                            <div class="health-score-badge" id="doctorScoreBadge">--</div>
-                            <div>
-                                <div style="font-weight:600; font-size:15px;" data-i18n="doctor.title">PATH Doctor Health Inspector</div>
-                                <div class="text-secondary" style="font-size:12px;" id="doctorStatusText" data-i18n="doctor.statusInit">Click 'Run Inspection' to analyze PATH health, dead links & command shadowing.</div>
+                <!-- Sub-Tab 1: PATH Doctor -->
+                <div class="settings-tab-pane" id="subtab-doctor">
+                    <!-- PATH Doctor Health Dashboard -->
+                    <div class="card-box mb-lg" id="pathDoctorBox">
+                        <div class="flex-between mb-sm">
+                            <div class="flex-align-center" style="gap:12px;">
+                                <div class="health-score-badge" id="doctorScoreBadge">--</div>
+                                <div>
+                                    <div style="font-weight:600; font-size:15px;" data-i18n="doctor.title">PATH Doctor Health Inspector</div>
+                                    <div class="text-secondary" style="font-size:12px;" id="doctorStatusText" data-i18n="doctor.statusInit">Click 'Run Inspection' to analyze PATH health, dead links & command shadowing.</div>
+                                </div>
+                            </div>
+                            <div class="toolbar" style="margin-bottom:0">
+                                <button class="btn btn--sm" id="btnRunDoctor">
+                                    <svg class="btn__icon-spin" width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+                                        <path fill-rule="evenodd" d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2v1z"/>
+                                        <path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466z"/>
+                                    </svg>
+                                    <span data-i18n="doctor.btnRun">Run Inspection</span>
+                                </button>
+                                <button class="btn btn--sm btn--accent" id="btnAutoCleanPath" style="display:none">
+                                    <span data-i18n="doctor.btnAutoClean">Auto Clean & Fix</span>
+                                </button>
                             </div>
                         </div>
-                        <div class="toolbar" style="margin-bottom:0">
-                            <button class="btn btn--sm" id="btnRunDoctor">
-                                <svg class="btn__icon-spin" width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-                                    <path fill-rule="evenodd" d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2v1z"/>
-                                    <path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466z"/>
-                                </svg>
-                                <span data-i18n="doctor.btnRun">Run Inspection</span>
-                            </button>
-                            <button class="btn btn--sm btn--accent" id="btnAutoCleanPath" style="display:none">
-                                <span data-i18n="doctor.btnAutoClean">Auto Clean & Fix</span>
-                            </button>
-                        </div>
-                    </div>
 
-                    <!-- 4 Diagnostic Metric Cards -->
-                    <div class="doctor-metrics-grid" id="doctorMetricsGrid" style="display:none">
-                        <div class="metric-mini-card">
-                            <div class="metric-mini-card__label" data-i18n="doctor.validLabel">Valid Entries</div>
-                            <div class="metric-mini-card__value text-success" id="docValidCount">0</div>
+                        <!-- 4 Diagnostic Metric Cards -->
+                        <div class="doctor-metrics-grid" id="doctorMetricsGrid" style="display:none">
+                            <div class="metric-mini-card">
+                                <div class="metric-mini-card__label" data-i18n="doctor.validLabel">Valid Entries</div>
+                                <div class="metric-mini-card__value text-success" id="docValidCount">0</div>
+                            </div>
+                            <div class="metric-mini-card">
+                                <div class="metric-mini-card__label" data-i18n="doctor.deadLabel">Dead Paths</div>
+                                <div class="metric-mini-card__value text-danger" id="docDeadCount">0</div>
+                            </div>
+                            <div class="metric-mini-card">
+                                <div class="metric-mini-card__label" data-i18n="doctor.dupLabel">Duplicates</div>
+                                <div class="metric-mini-card__value text-warning" id="docDupCount">0</div>
+                            </div>
+                            <div class="metric-mini-card">
+                                <div class="metric-mini-card__label" data-i18n="doctor.conflictLabel">Conflicts</div>
+                                <div class="metric-mini-card__value text-accent" id="docConflictCount">0</div>
+                            </div>
                         </div>
-                        <div class="metric-mini-card">
-                            <div class="metric-mini-card__label" data-i18n="doctor.deadLabel">Dead Paths</div>
-                            <div class="metric-mini-card__value text-danger" id="docDeadCount">0</div>
-                        </div>
-                        <div class="metric-mini-card">
-                            <div class="metric-mini-card__label" data-i18n="doctor.dupLabel">Duplicates</div>
-                            <div class="metric-mini-card__value text-warning" id="docDupCount">0</div>
-                        </div>
-                        <div class="metric-mini-card">
-                            <div class="metric-mini-card__label" data-i18n="doctor.conflictLabel">Conflicts</div>
-                            <div class="metric-mini-card__value text-accent" id="docConflictCount">0</div>
-                        </div>
-                    </div>
 
-                    <!-- Detailed Issues & Conflict Drawer -->
-                    <div id="doctorDetailsDrawer" style="display:none; margin-top:14px; border-top:1px solid var(--border-subtle); padding-top:12px;">
-                        <div id="doctorIssuesList"></div>
+                        <!-- Detailed Issues & Conflict Drawer -->
+                        <div id="doctorDetailsDrawer" style="display:none; margin-top:14px; border-top:1px solid var(--border-subtle); padding-top:12px;">
+                            <div id="doctorIssuesList"></div>
+                        </div>
                     </div>
                 </div>
 
-                <div class="tabs" id="envvarTabs">
-                    <button class="tab tab--active" data-scope="user" data-i18n="settings.userVars">User Variables</button>
-                    <button class="tab" data-scope="system" data-i18n="settings.systemVars">System Variables</button>
-                </div>
+                <!-- Sub-Tab 2: Environment Variables -->
+                <div class="settings-tab-pane" id="subtab-envvars" style="display:none">
+                    <div class="info-box info-box--info mb-lg">
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" style="flex-shrink:0;margin-top:2px;color:var(--accent)"><path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0-1A6 6 0 1 0 8 2a6 6 0 0 0 0 12zm-.5-9h1v1h-1V5zm0 2h1v4h-1V7z"/></svg>
+                        <span data-i18n="settings.snapshotHint">A snapshot will be automatically created before any modification for safe rollback.</span>
+                    </div>
 
-                <div class="toolbar">
-                    <button class="btn btn--accent" id="btnAddEnvVar">
-                        <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 2a.5.5 0 0 1 .5.5v5h5a.5.5 0 0 1 0 1h-5v5a.5.5 0 0 1-1 0v-5h-5a.5.5 0 0 1 0-1h5v-5A.5.5 0 0 1 8 2z"/></svg>
-                        <span data-i18n="settings.addNew">New Variable</span>
-                    </button>
-                    <div class="toolbar__spacer"></div>
-                    <div class="toolbar__search-wrap">
-                        <svg class="search-icon" width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85zm-5.242.156a5 5 0 1 1 0-10 5 5 0 0 1 0 10z"/></svg>
-                        <input type="text" class="toolbar__search" id="envvarSearch" data-i18n-placeholder="settings.searchPlaceholder">
+                    <div class="tabs" id="envvarTabs">
+                        <button class="tab tab--active" data-scope="user" data-i18n="settings.userVars">User Variables</button>
+                        <button class="tab" data-scope="system" data-i18n="settings.systemVars">System Variables</button>
+                    </div>
+
+                    <div class="toolbar">
+                        <button class="btn btn--accent" id="btnAddEnvVar">
+                            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 2a.5.5 0 0 1 .5.5v5h5a.5.5 0 0 1 0 1h-5v5a.5.5 0 0 1-1 0v-5h-5a.5.5 0 0 1 0-1h5v-5A.5.5 0 0 1 8 2z"/></svg>
+                            <span data-i18n="settings.addNew">New Variable</span>
+                        </button>
+                        <div class="toolbar__spacer"></div>
+                        <div class="toolbar__search-wrap">
+                            <svg class="search-icon" width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85zm-5.242.156a5 5 0 1 1 0-10 5 5 0 0 1 0 10z"/></svg>
+                            <input type="text" class="toolbar__search" id="envvarSearch" data-i18n-placeholder="settings.searchPlaceholder">
+                        </div>
+                    </div>
+
+                    <div class="envvar-table-wrap">
+                        <table class="data-table" id="envvarTable">
+                            <thead>
+                                <tr>
+                                    <th data-i18n="settings.colName">Name</th>
+                                    <th data-i18n="settings.colValue">Value</th>
+                                    <th data-i18n="settings.colActions">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="envvarBody"></tbody>
+                        </table>
                     </div>
                 </div>
 
-                <div class="envvar-table-wrap">
-                    <table class="data-table" id="envvarTable">
-                        <thead>
-                            <tr>
-                                <th data-i18n="settings.colName">Name</th>
-                                <th data-i18n="settings.colValue">Value</th>
-                                <th data-i18n="settings.colActions">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody id="envvarBody"></tbody>
-                    </table>
+                <!-- Sub-Tab 3: Preferences -->
+                <div class="settings-tab-pane" id="subtab-preferences" style="display:none">
+                    <div class="card-box mb-lg">
+                        <div style="font-weight:600;font-size:15px;margin-bottom:14px;" data-i18n="settings.prefApp">Application Preferences</div>
+                        
+                        <div class="flex-between mb-md" style="border-bottom:1px solid var(--border-subtle);padding-bottom:12px;">
+                            <div>
+                                <div style="font-weight:600;font-size:13px;" data-i18n="settings.prefLang">Interface Language</div>
+                                <div class="text-secondary" style="font-size:12px;" data-i18n="settings.prefLangDesc">Choose your preferred display language.</div>
+                            </div>
+                            <select class="input" id="settingsLangSelect" style="max-width:140px;">
+                                <option value="en">English</option>
+                                <option value="zh-CN">中文</option>
+                            </select>
+                        </div>
+
+                        <div class="flex-between mb-md" style="border-bottom:1px solid var(--border-subtle);padding-bottom:12px;">
+                            <div>
+                                <div style="font-weight:600;font-size:13px;" data-i18n="settings.prefStartup">Startup Auto Update Check</div>
+                                <div class="text-secondary" style="font-size:12px;" data-i18n="settings.prefStartupDesc">Automatically query package managers for updates on application launch.</div>
+                            </div>
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="chkStartupUpdates" checked>
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
+
+                        <div class="flex-between">
+                            <div>
+                                <div style="font-weight:600;font-size:13px;" data-i18n="settings.prefAbout">About LazyEnv</div>
+                                <div class="text-secondary" style="font-size:12px;">LazyEnv v0.8.0 • Open-Source Developer Environment Configurator</div>
+                            </div>
+                            <button class="btn btn--sm" id="btnOpenGitHub" data-i18n="settings.prefOpenRepo">GitHub Repository</button>
+                        </div>
+                    </div>
                 </div>
             </div>
 
             <!-- ==================== SYSTEM CHECK ==================== -->
             <div class="page" id="page-syscheck">
                 <h1 class="page-title" data-i18n="syscheck.title">System Check</h1>
-                <p class="page-desc" data-i18n="syscheck.desc">Verify system prerequisites before installation.</p>
+                <p class="page-desc" data-i18n="syscheck.desc">Verify system prerequisites, developer modes and runtime health.</p>
 
-                <div class="card" id="checkResults"></div>
+                <div class="syscheck-grid mb-lg" id="syscheckGrid">
+                    <!-- Populated dynamically by renderChecks() -->
+                </div>
 
-                <div class="mt-lg">
+                <div class="toolbar" style="margin-bottom:0">
                     <button class="btn" id="btnRunChecks">
-                        <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2v1z"/><path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466z"/></svg>
+                        <svg class="btn__icon-spin" width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2v1z"/><path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466z"/></svg>
                         <span data-i18n="syscheck.rerun">Re-run Checks</span>
+                    </button>
+                    <button class="btn btn--accent" id="btnSysCheckGoRecipes" data-i18n="syscheck.goRecipes">
+                        <span>Browse Stack Recipes →</span>
+                    </button>
+                    <button class="btn" id="btnSysCheckGoPackages" data-i18n="syscheck.goPackages">
+                        <span>Browse Packages</span>
                     </button>
                 </div>
             </div>
@@ -519,28 +577,46 @@
                     </div>
                 </div>
 
-                <div id="packageList"></div>
+                <div id="packageList" class="mb-lg"></div>
 
-                <div class="mt-lg flex-between">
-                    <span id="pkgSelectedCount" class="text-secondary"></span>
-                    <button class="btn btn--accent" id="btnStartInstall" data-i18n="packages.startInstall">Start Installation</button>
+                <!-- Sticky Bottom Action Bar -->
+                <div class="sticky-bottom-bar" id="pkgStickyBar">
+                    <div class="flex-align-center" style="gap:12px;">
+                        <span class="sticky-bottom-bar__count" id="pkgSelectedCount">0 items selected</span>
+                        <button class="btn btn--sm" id="btnStickyClear" data-i18n="packages.deselectAll">Deselect All</button>
+                    </div>
+                    <button class="btn btn--accent" id="btnStartInstall" data-i18n="packages.startInstall">Start Installation →</button>
                 </div>
             </div>
 
             <!-- ==================== INSTALL ==================== -->
             <div class="page" id="page-install">
                 <h1 class="page-title" data-i18n="install.title">Installation</h1>
-                <p class="page-desc" data-i18n="install.desc">Installing selected packages...</p>
+                <p class="page-desc" id="installPageDesc" data-i18n="install.desc">Installing selected packages...</p>
 
-                <div class="flex-between mb-md">
-                    <span id="installProgress" class="text-secondary"></span>
-                    <span id="installPercent" class="text-accent" style="font-weight:600"></span>
-                </div>
-                <div class="progress-bar" id="installProgressBar">
-                    <div class="progress-bar__fill" id="installProgressFill" style="width:0%"></div>
+                <!-- Empty State when no active install task -->
+                <div id="installEmptyBox" class="empty-state" style="padding:48px 24px; display:none;">
+                    <div class="empty-state__icon">📦</div>
+                    <div style="font-size:16px;font-weight:600;margin-bottom:8px;color:var(--text-primary);" data-i18n="install.emptyTitle">No Active Installation</div>
+                    <div class="empty-state__text mb-lg" style="margin-bottom:16px;" data-i18n="install.emptyDesc">Select tools from Packages or deploy a Stack Recipe to begin installation.</div>
+                    <div class="toolbar" style="margin-bottom:0; justify-content:center;">
+                        <button class="btn btn--accent" id="btnInstallGoPackages" data-i18n="install.goPackages">Select Packages →</button>
+                        <button class="btn" id="btnInstallGoRecipes" data-i18n="install.goRecipes">Explore Stacks</button>
+                    </div>
                 </div>
 
-                <div id="installList" class="mt-lg"></div>
+                <!-- Active Installation View -->
+                <div id="installActiveBox">
+                    <div class="flex-between mb-md">
+                        <span id="installProgress" class="text-secondary"></span>
+                        <span id="installPercent" class="text-accent" style="font-weight:600"></span>
+                    </div>
+                    <div class="progress-bar" id="installProgressBar">
+                        <div class="progress-bar__fill" id="installProgressFill" style="width:0%"></div>
+                    </div>
+
+                    <div id="installList" class="mt-lg"></div>
+                </div>
             </div>
 
             <!-- ==================== RECOVERY ==================== -->
