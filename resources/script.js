@@ -47,6 +47,7 @@
     var environmentUpdates = new Map();
     var hubUpdates = [];
     var currentHubFilter = "all";
+    var currentMirrorType = "npm";
     var selectedHubUpdateIds = new Set();
     var isCheckingHubUpdates = false;
     var isBatchUpgrading = false;
@@ -91,6 +92,18 @@
             case "environmentsDetected":
                 detectedEnvironments = d.environments || [];
                 renderEnvironments();
+                break;
+
+            case "mirrorSourceInfo":
+                showMirrorDialog(d.type, d.currentUrl);
+                break;
+
+            case "mirrorSourceSetResult":
+                if (d.success) {
+                    showToast(t("mirror.success", (d.type || "").toUpperCase(), d.url), "success");
+                } else {
+                    showToast("Failed to set mirror registry.", "error");
+                }
                 break;
 
             case "allUpdatesDetected":
@@ -399,7 +412,7 @@
                     found: true,
                     name: obj.command,
                     command: obj.command,
-                    version: obj.command + " 0.3.0 (mock)",
+                    version: obj.command + " 0.4.0 (mock)",
                     category: obj.category || "other"
                 });
             }, 600);
@@ -482,6 +495,25 @@
         }
         if (obj.action === "deleteEnvVar") {
             setTimeout(function () { handleNative({ action: "envVarDeleteResult", success: true }); }, 300);
+        }
+        if (obj.action === "getMirrorSource") {
+            setTimeout(function () {
+                handleNative({
+                    action: "mirrorSourceInfo",
+                    type: obj.type,
+                    currentUrl: obj.type === "npm" ? "https://registry.npmjs.org/" : "https://pypi.org/simple"
+                });
+            }, 300);
+        }
+        if (obj.action === "setMirrorSource") {
+            setTimeout(function () {
+                handleNative({
+                    action: "mirrorSourceSetResult",
+                    type: obj.type,
+                    url: obj.url,
+                    success: true
+                });
+            }, 500);
         }
         if (obj.action === "getAllUpdates") {
             setTimeout(function () {
@@ -721,6 +753,15 @@
                         badgeHtml = ' <span class="badge badge--uptodate">' + esc(t("home.upToDate")) + '</span>';
                     }
                 }
+                var mirrorBtnHtml = "";
+                var cmdLow = (e.command || "").toLowerCase();
+                var nameLow = (e.name || "").toLowerCase();
+                if (cmdLow === "node" || cmdLow === "npm" || cmdLow === "pnpm" || nameLow.includes("node")) {
+                    mirrorBtnHtml = '<button class="btn btn--sm btn-mirror" data-type="npm">' + esc(t("mirror.btn")) + '</button>';
+                } else if (cmdLow === "python" || cmdLow === "python3" || cmdLow === "pip" || nameLow.includes("python")) {
+                    mirrorBtnHtml = '<button class="btn btn--sm btn-mirror" data-type="pip">' + esc(t("mirror.btn")) + '</button>';
+                }
+
                 html += '<div class="card-row" data-cmd="' + esc(e.command) + '">' +
                     '<div class="card-row__icon">' + iconSvg + '</div>' +
                     '<div class="card-row__body">' +
@@ -728,6 +769,7 @@
                     '<div class="card-row__subtitle">' + esc(e.version) + '</div>' +
                     '</div>' +
                     '<div class="card-row__actions">' +
+                    mirrorBtnHtml +
                     updateBtnHtml +
                     '<button class="btn btn--sm btn-uninstall">' + esc(t("env.btnUninstall")) + '</button>' +
                     '</div></div>';
@@ -750,6 +792,15 @@
                         { text: t("env.btnUninstall"), cls: "btn--danger", action: function () { sendNative({ action: "uninstallPackage", command: name }); } }
                     ]
                 );
+            });
+        });
+
+        container.querySelectorAll(".btn-mirror").forEach(function (btn) {
+            btn.addEventListener("click", function (ev) {
+                ev.stopPropagation();
+                var type = btn.getAttribute("data-type") || "npm";
+                currentMirrorType = type;
+                sendNative({ action: "getMirrorSource", type: type });
             });
         });
 
@@ -1955,6 +2006,91 @@
             if (panel) panel.innerHTML = "";
         });
     }
+
+    
+    // -----------------------------------------------------------------------
+    // Mirror Accelerator Dialog & Presets Handler
+    // -----------------------------------------------------------------------
+    var MIRRORS = {
+        npm: [
+            { name: "Aliyun (阿里云镜像)", url: "https://registry.npmmirror.com" },
+            { name: "Tencent (腾讯云镜像)", url: "https://mirrors.cloud.tencent.com/npm/" },
+            { name: "Huawei (华为云镜像)", url: "https://repo.huaweicloud.com/repository/npm/" },
+            { name: "Official (官方默认源)", url: "https://registry.npmjs.org/" }
+        ],
+        pip: [
+            { name: "Tsinghua (清华大学开源镜像)", url: "https://pypi.tuna.tsinghua.edu.cn/simple" },
+            { name: "Aliyun (阿里云镜像)", url: "https://mirrors.aliyun.com/pypi/simple/" },
+            { name: "Tencent (腾讯云镜像)", url: "https://mirrors.cloud.tencent.com/pypi/simple" },
+            { name: "Official (官方默认源)", url: "https://pypi.org/simple" }
+        ]
+    };
+
+    function showMirrorDialog(type, currentUrl) {
+        var list = MIRRORS[type] || MIRRORS.npm;
+        var bodyHtml = '<div style="margin-bottom:12px;">' +
+            '<span class="text-secondary">' + esc(t("mirror.current")) + '</span>' +
+            '<code class="code-badge" style="display:block; margin-top:4px; word-break:break-all;">' + esc(currentUrl) + '</code>' +
+            '</div>' +
+            '<div class="mirror-radio-group">';
+
+        list.forEach(function (m, idx) {
+            var checked = (currentUrl.trim() === m.url.trim() || (idx === 0 && !currentUrl)) ? "checked" : "";
+            bodyHtml += '<label class="mirror-option">' +
+                '<input type="radio" name="mirrorUrlChoice" value="' + esc(m.url) + '" ' + checked + '>' +
+                '<div><div style="font-weight:600; font-size:13px;">' + esc(m.name) + '</div>' +
+                '<div class="text-secondary" style="font-size:11px;">' + esc(m.url) + '</div></div>' +
+                '</label>';
+        });
+
+        bodyHtml += '</div>';
+
+        showDialogRaw(
+            t("mirror.title") + " (" + type.toUpperCase() + ")",
+            bodyHtml,
+            [
+                { text: t("dialog.cancel"), cls: "" },
+                {
+                    text: t("mirror.apply"),
+                    cls: "btn--accent",
+                    action: function () {
+                        var chosen = document.querySelector('input[name="mirrorUrlChoice"]:checked');
+                        if (chosen && chosen.value) {
+                            sendNative({
+                                action: "setMirrorSource",
+                                type: type,
+                                url: chosen.value
+                            });
+                        }
+                    }
+                }
+            ]
+        );
+    }
+
+    var STACK_PRESETS = {
+        web: ["OpenJS.NodeJS.LTS", "Git.Git", "Microsoft.VisualStudioCode"],
+        python: ["Python.Python.3.12", "Git.Git", "Microsoft.VisualStudioCode", "jqlang.jq"],
+        cpp: ["LLVM.LLVM", "Kitware.CMake", "Ninja-build.Ninja", "Git.Git", "Microsoft.VisualStudioCode"],
+        rust: ["Rustlang.Rustup", "Git.Git", "Microsoft.VisualStudioCode"],
+        mobile: ["Oracle.JDK.21", "OpenJS.NodeJS.LTS", "Git.Git", "Microsoft.VisualStudioCode"]
+    };
+
+    document.querySelectorAll(".btn-configure-stack").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+            var stackKey = btn.getAttribute("data-stack");
+            var pkgIds = STACK_PRESETS[stackKey];
+            if (!pkgIds) return;
+
+            selectedPackages.clear();
+            pkgIds.forEach(function (id) { selectedPackages.add(id); });
+
+            navigateTo("packages");
+            renderCatalog();
+            updateSelectedCount();
+            showToast("Presets selected! Click 'Start Installation' to proceed.", "info");
+        });
+    });
 
         navigateTo("home");
 

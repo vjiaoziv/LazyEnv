@@ -541,6 +541,66 @@ std::string handleWebMessage(const std::string& message) {
         return "{\"action\":\"verifyStarted\"}";
     }
 
+    // ------ Mirror Accelerator: Get current registry URL ------
+    if (action == "getMirrorSource") {
+        std::string type = extractJsonValue(message, "type");
+        std::thread([type]() {
+            try {
+                std::string out;
+                std::string currentUrl;
+                if (type == "npm") {
+                    int rc = lazyenv::Installer::runCommand("npm config get registry 2>&1", out, 5000);
+                    auto nl = out.find('\n');
+                    currentUrl = out.substr(0, nl == std::string::npos ? out.size() : nl);
+                    while (!currentUrl.empty() && (currentUrl.back() == '\r' || currentUrl.back() == ' '))
+                        currentUrl.pop_back();
+                    if (rc != 0 || currentUrl.empty()) currentUrl = "https://registry.npmjs.org/";
+                } else if (type == "pip") {
+                    int rc = lazyenv::Installer::runCommand("python -m pip config get global.index-url 2>&1", out, 5000);
+                    auto nl = out.find('\n');
+                    currentUrl = out.substr(0, nl == std::string::npos ? out.size() : nl);
+                    while (!currentUrl.empty() && (currentUrl.back() == '\r' || currentUrl.back() == ' '))
+                        currentUrl.pop_back();
+                    if (rc != 0 || currentUrl.find("ERROR") != std::string::npos || currentUrl.empty()) {
+                        currentUrl = "https://pypi.org/simple";
+                    }
+                }
+                std::ostringstream os;
+                os << "{\"action\":\"mirrorSourceInfo\","
+                   << "\"type\":\"" << jsonEscape(type) << "\","
+                   << "\"currentUrl\":\"" << jsonEscape(currentUrl) << "\"}";
+                g_webview.postMessage(os.str());
+            } catch (...) {}
+        }).detach();
+        return "{\"action\":\"getMirrorSourceStarted\"}";
+    }
+
+    // ------ Mirror Accelerator: Set new registry URL ------
+    if (action == "setMirrorSource") {
+        std::string type = extractJsonValue(message, "type");
+        std::string url  = extractJsonValue(message, "url");
+        std::thread([type, url]() {
+            try {
+                std::string out;
+                int rc = -1;
+                if (type == "npm") {
+                    rc = lazyenv::Installer::runCommand("npm config set registry " + url + " 2>&1", out, 8000);
+                } else if (type == "pip") {
+                    rc = lazyenv::Installer::runCommand("python -m pip config set global.index-url " + url + " 2>&1", out, 8000);
+                }
+                std::ostringstream os;
+                os << "{\"action\":\"mirrorSourceSetResult\","
+                   << "\"type\":\"" << jsonEscape(type) << "\","
+                   << "\"url\":\"" << jsonEscape(url) << "\","
+                   << "\"success\":" << (rc == 0 ? "true" : "false") << "}";
+                g_webview.postMessage(os.str());
+            } catch (...) {
+                g_webview.postMessage("{\"action\":\"mirrorSourceSetResult\",\"success\":false}");
+            }
+        }).detach();
+        return "{\"action\":\"setMirrorSourceStarted\"}";
+    }
+
     // ------ Updates Hub: Toggle package pin/ignore ------
     if (action == "togglePinPackage") {
         std::string pkgId = extractJsonValue(message, "packageId");

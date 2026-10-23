@@ -1063,3 +1063,95 @@ textarea.input {
     background: var(--accent);
     color: #000;
 }
+
+/* ============================================================================
+   Dev Stacks Presets & Mirror Switcher Styles
+   ============================================================================ */
+
+.preset-section__title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.preset-stacks-scroll {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 12px;
+}
+
+.stack-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    transition: all 0.2s cubic-bezier(0.1, 0.9, 0.2, 1);
+}
+
+.stack-card:hover {
+    background: var(--bg-card-hover);
+    border-color: var(--accent);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+}
+
+.stack-card__icon {
+    width: 32px;
+    height: 32px;
+    border-radius: var(--radius-sm);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    margin-bottom: 8px;
+}
+
+.stack-card__title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 4px;
+}
+
+.stack-card__desc {
+    font-size: 12px;
+    color: var(--text-secondary);
+    line-height: 1.4;
+    margin-bottom: 12px;
+    flex: 1;
+}
+
+.stack-card__footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.mirror-radio-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 10px;
+}
+
+.mirror-option {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    padding: 8px 12px;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.mirror-option:hover {
+    background: rgba(255, 255, 255, 0.06);
+}
+
+.mirror-option input[type="radio"] {
+    accent-color: var(--accent);
+}

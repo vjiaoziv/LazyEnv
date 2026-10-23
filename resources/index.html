@@ -101,7 +101,7 @@
         </div>
 
         <div class="sidebar__footer">
-            <span class="sidebar__version">LazyEnv v0.3.0</span>
+            <span class="sidebar__version">LazyEnv v0.4.0</span>
             <select class="sidebar__lang-select" id="langSelect">
                 <option value="en">English</option>
                 <option value="zh-CN">中文</option>
@@ -117,6 +117,79 @@
             <div class="page page--active" id="page-home">
                 <h1 class="page-title" data-i18n="home.title">Home</h1>
                 <p class="page-desc" data-i18n="home.desc">Detected development environments on this machine.</p>
+
+                <!-- 5 Dev Stack Quick Presets -->
+                <div class="preset-section mb-lg">
+                    <div class="flex-between mb-sm">
+                        <span class="preset-section__title" data-i18n="presets.title">Quick Dev Stacks (One-Click Setup)</span>
+                    </div>
+                    <div class="preset-stacks-scroll">
+                        <!-- 1. Web Frontend Stack -->
+                        <div class="stack-card">
+                            <div class="stack-card__icon" style="background: rgba(0, 120, 215, 0.15); color: #60cdff;">
+                                🌐
+                            </div>
+                            <div class="stack-card__title" data-i18n="presets.webTitle">Web Frontend</div>
+                            <div class="stack-card__desc" data-i18n="presets.webDesc">Node.js LTS, pnpm, Git, VS Code</div>
+                            <div class="stack-card__footer">
+                                <span class="badge--source tag--npm">Node / pnpm</span>
+                                <button class="btn btn--sm btn--accent btn-configure-stack" data-stack="web" data-i18n="presets.btnConfigure">Setup</button>
+                            </div>
+                        </div>
+
+                        <!-- 2. Python AI & Data Science Stack -->
+                        <div class="stack-card">
+                            <div class="stack-card__icon" style="background: rgba(55, 118, 171, 0.15); color: #ffd43b;">
+                                🐍
+                            </div>
+                            <div class="stack-card__title" data-i18n="presets.pythonTitle">Python AI & Data</div>
+                            <div class="stack-card__desc" data-i18n="presets.pythonDesc">Python 3.12, pip, Git, VS Code, jq</div>
+                            <div class="stack-card__footer">
+                                <span class="badge--source tag--pip">Python / AI</span>
+                                <button class="btn btn--sm btn--accent btn-configure-stack" data-stack="python" data-i18n="presets.btnConfigure">Setup</button>
+                            </div>
+                        </div>
+
+                        <!-- 3. Modern C/C++ Stack -->
+                        <div class="stack-card">
+                            <div class="stack-card__icon" style="background: rgba(142, 68, 173, 0.15); color: #d2b4de;">
+                                ⚙️
+                            </div>
+                            <div class="stack-card__title" data-i18n="presets.cppTitle">Modern C/C++</div>
+                            <div class="stack-card__desc" data-i18n="presets.cppDesc">LLVM/Clang, CMake, Ninja, Git, VS Code</div>
+                            <div class="stack-card__footer">
+                                <span class="badge--source tag--winget">Clang / CMake</span>
+                                <button class="btn btn--sm btn--accent btn-configure-stack" data-stack="cpp" data-i18n="presets.btnConfigure">Setup</button>
+                            </div>
+                        </div>
+
+                        <!-- 4. Rust Systems Stack -->
+                        <div class="stack-card">
+                            <div class="stack-card__icon" style="background: rgba(222, 165, 132, 0.15); color: #dea584;">
+                                🦀
+                            </div>
+                            <div class="stack-card__title" data-i18n="presets.rustTitle">Rust Systems</div>
+                            <div class="stack-card__desc" data-i18n="presets.rustDesc">Rust (rustup), Cargo, Git, VS Code</div>
+                            <div class="stack-card__footer">
+                                <span class="badge--source tag--scoop">Rustup / Cargo</span>
+                                <button class="btn btn--sm btn--accent btn-configure-stack" data-stack="rust" data-i18n="presets.btnConfigure">Setup</button>
+                            </div>
+                        </div>
+
+                        <!-- 5. Mobile & Cross-Platform Stack -->
+                        <div class="stack-card">
+                            <div class="stack-card__icon" style="background: rgba(46, 204, 113, 0.15); color: #2ecc71;">
+                                📱
+                            </div>
+                            <div class="stack-card__title" data-i18n="presets.mobileTitle">Mobile & Cross-Platform</div>
+                            <div class="stack-card__desc" data-i18n="presets.mobileDesc">Java JDK 21, Node.js LTS, Git, VS Code</div>
+                            <div class="stack-card__footer">
+                                <span class="badge--source tag--winget">Java / Node</span>
+                                <button class="btn btn--sm btn--accent btn-configure-stack" data-stack="mobile" data-i18n="presets.btnConfigure">Setup</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
 
                 <div class="toolbar">
                     <button class="btn" id="btnRefreshEnv">

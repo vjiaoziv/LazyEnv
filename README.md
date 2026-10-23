@@ -3,110 +3,80 @@
 **English** | [中文](README_zh-CN.md)
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Release-v0.3.0-0078D4?style=flat-square" alt="Release" />
+  <img src="https://img.shields.io/badge/Release-v0.4.0-0078D4?style=flat-square" alt="Release" />
   <img src="https://img.shields.io/badge/Platform-Windows%2010%20%7C%2011-0078D4?style=flat-square&logo=windows" alt="Platform" />
   <img src="https://img.shields.io/badge/C%2B%2B-23-blue?style=flat-square&logo=c%2B%2B" alt="C++23" />
   <img src="https://img.shields.io/badge/UI-WebView2%20%7C%20Fluent-success?style=flat-square" alt="UI" />
   <img src="https://img.shields.io/badge/License-MIT-green?style=flat-square" alt="License" />
 </p>
 
-**Cross-platform, recoverable, zero-pollution dev environment configurator & multi-source update hub.**
+**Developer-centric out-of-the-box environment manager, high-speed mirror switcher, and multi-source update hub.**
 
-Version: **0.3.0**
-
----
-
-## Overview
-
-LazyEnv is a modern Windows desktop application that streamlines development environment setup and ongoing toolchain maintenance. Combining a native Win32 + WebView2 architecture with Windows 11 Fluent Design, it provides clean package installation, comprehensive registry environment variable management, snapshot-based rollback, and a centralized **Multi-Source Updates Hub (WinGet, Scoop, NPM Global, Pip)** with intelligent failure diagnostics.
-
-### Core Principles
-
-| Principle | Description |
-|-----------|-------------|
-| **Cross-Platform Architecture** | Modular backend decoupled from OS APIs; native Win32 + WebView2 implementation on Windows (P0) |
-| **Recoverable & Zero Pollution** | Automatic pre-operation snapshots before any install/upgrade; 100% reversible with zero hidden side-effects (P1) |
-| **Multi-Source Governance** | Seamlessly aggregates system packages (WinGet), portable shims (Scoop), Node toolchains (NPM), and Python packages (Pip) (P2) |
+Version: **0.4.0**
 
 ---
 
-## Key Features
+## Overview & Core Value
 
-### 1. Dedicated Updates Hub & Multi-Source Management
-- **Multi-Source Aggregation**: Simultaneously checks updates across WinGet, Scoop, NPM (global), and Pip.
-- **Async Parallel Acceleration**: Powered by `std::async` multi-threaded querying, cutting scan times from 35s+ down to 10~15s.
-- **Categorized Source Filtering**: Easily switch between `All`, `WinGet`, `Scoop`, `NPM`, `Pip`, and `Pinned` tabs with real-time package counts.
-- **Version Pinning (Pin / Ignore)**: Lock specific tool versions to prevent unwanted upgrades and suppress update badges.
-
-### 2. Two-Layer Detailed Progress Dashboard & Live Terminal Logs
-- **Macro Queue Overview**: Displays overall queue status (e.g. `Updating 2 / 5 packages`) and global percentage bar.
-- **Micro Sub-Task Card**: Intelligently parses command output into structured stages:
-  - `Preparing`: Dependency and metadata synchronization
-  - `Downloading`: Real-time percentage, downloaded/total size, and download speeds
-  - `Verifying`: Installer checksum and hash validation
-  - `Installing`: File extraction, deployment, and shims setup
-  - `Completed` / `Failed`
-- **Console Log Drawer**: Expandable real-time stdout/stderr log stream with one-click clipboard copying.
-
-### 3. Intelligent Failure Diagnostics & One-Click Rollback
-- **Automated Root-Cause Categorization**:
-  - `ELEVATION_REQUIRED`: Privilege errors (0x80070005) with interactive UAC retry option
-  - `FILE_LOCKED`: Process lock errors (0x80070020) prompting the user to close active instances
-  - `HASH_MISMATCH`: Corrupted packages or upstream cache drift
-  - `NETWORK_ERROR`: Connection timeout and proxy issues
-- **One-Click Pre-Update Rollback**: Instantly revert environment variables and PATH back to the pre-update state directly from the diagnostic banner.
-
-### 4. Environment Variable & PATH Governance
-- View, edit, and add user and system environment variables;
-- Interactive segmented PATH editor;
-- Instantly broadcasts `WM_SETTINGCHANGE` to ensure changes take effect immediately across the OS without reboots.
-
----
-
-## Architecture
+LazyEnv is a next-generation Windows development environment configurator and toolchain manager. Unlike generic software stores, LazyEnv focuses on resolving developers' key pain points: **tedious new machine setup, dependency conflicts, slow registry downloads in China/behind firewalls, and broken PATH variables**:
 
 ```
-LazyEnv/
-|-- main.cpp                 // WinMain entry, window message pump, WebMessage bridge
-|-- webview_host.cpp/h       // WebView2 controller with fail-fast exception guards
-|-- installer.cpp/h          // Command execution engine, mutex handle locking, PATH management
-|-- package_manager.cpp/h    // IPackageManager abstraction (WinGet, Scoop, NPM, Pip)
-|-- update_manager.cpp/h     // Updates Hub orchestrator, parallel detection, diagnostics engine
-|-- rollback.cpp/h           // Environment variable snapshot & restore engine
-|-- resources/
-|   |-- index.html           // Fluent UI structure
-|   |-- style.css            // Windows 11 Fluent Design styles
-|   |-- script.js            // Frontend pipeline & state management
-|   |-- i18n.js              // Full bilingual internationalization (en, zh-CN)
-|   |-- icons.js             // Vector icon dictionary
-|-- LazyEnv.rc               // Icon and v0.3.0 version resource script
-|-- CMakeLists.txt           // Build configuration
+┌────────────────────────────────────────────────────────────────────────┐
+│                        LazyEnv Core Value Pillars                      │
+├────────────────────┬────────────────────┬──────────────────────────────┤
+│ 🚀 Dev Stacks      │ 🇨🇳 Mirror Speedup  │ 🛡️ Snapshot & Zero Pollution  │
+│ 5 role-based quick │ npm/pip high-speed │ Mandatory pre-operation snap │
+│ presets in 1 click │ mirror switching   │ with 1-click instant restore │
+├────────────────────┴────────────────────┴──────────────────────────────┤
+│ 🔄 Multi-Source Updates Hub: WinGet, Scoop, NPM (Global), Pip with live UI     │
+└────────────────────────────────────────────────────────────────────────┘
 ```
+
+---
+
+## Key Feature Matrix
+
+### 1. 🚀 5 Quick Dev Stacks (One-Click Setup)
+Top of Home page features curated technology stacks:
+- 🌐 **Web Frontend**: Node.js LTS, pnpm, Git, VS Code
+- 🐍 **Python AI & Data**: Python 3.12, pip, Git, VS Code, jq
+- ⚙️ **Modern C/C++**: LLVM/Clang, CMake, Ninja, Git, VS Code
+- 🦀 **Rust Systems**: Rust (rustup), Cargo, Git, VS Code
+- 📱 **Mobile & Cross-Platform**: Java JDK 21, Node.js LTS, Git, VS Code
+
+### 2. 🇨🇳 Multi-Source Mirror Accelerator
+Eliminates download timeouts by instantly switching package registries to high-speed domestic mirrors:
+- **Node / NPM Mirror**: Switch between **Aliyun**, **Tencent**, **Tsinghua/npmmirror**, or official registry;
+- **Python / Pip Mirror**: Switch between **Tsinghua**, **Aliyun**, **Tencent**, or official PyPI;
+- Directly executes underlying CLI configurations with immediate system effect.
+
+### 3. 🔄 Centralized Updates Hub
+- **Multi-Source Aggregation**: Checks updates across **WinGet**, **Scoop**, **NPM (Global)**, and **Pip**;
+- **Async Parallel Acceleration**: Powered by `std::async` multi-threaded queries, reducing scan times to ~10-15s;
+- **Two-Layer Detailed Progress Dashboard**: Macro queue bar + micro task stage recognition (Preparing / Downloading / Verifying / Installing / Completed) + live console drawer;
+- **Intelligent Diagnostics & One-Click Rollback**: Classifies errors (0x80070005 elevation, 0x80070020 process locked) with pre-update snapshot restoration.
+
+### 4. 🛡️ Environment Snapshot & PATH Governance
+- Automatically creates environment snapshots before any mutating operation;
+- Native registry editor for user/system variables and segmented PATH;
+- Immediately broadcasts `WM_SETTINGCHANGE` across the Windows subsystem.
 
 ---
 
 ## Building from Source
-
-### Prerequisites
-- Windows 10 (version 1903+) or Windows 11
-- Visual Studio (2022 or 2026 BuildTools with C++ Desktop workload)
-- CMake 3.24+
-- Microsoft Edge WebView2 Runtime (pre-installed on modern Windows)
-
-### Build Steps
 
 ```powershell
 # Clone the repository
 git clone https://github.com/vjiaoziv/LazyEnv.git
 cd LazyEnv
 
-# Configure with CMake (automatically downloads WebView2 SDK and WIL via NuGet)
+# Configure with CMake
 cmake -B build -A x64
 
 # Build Release binary
 cmake --build build --config Release
 
-# Output binary located at build/Release/LazyEnv.exe with resources synced automatically
+# Output binary located at build/Release/LazyEnv.exe
 ```
 
 ---
