@@ -78,21 +78,28 @@ FailureDiagnostic UpdateManager::diagnoseFailure(int exitCode, const std::string
     if (output.find("0x80070005") != std::string::npos ||
         output.find("Access is denied") != std::string::npos ||
         output.find("Administrator") != std::string::npos ||
-        output.find("权限不足") != std::string::npos) {
+        output.find("权限不足") != std::string::npos ||
+        output.find("拒绝访问") != std::string::npos ||
+        output.find("需要管理员权限") != std::string::npos) {
         diag.category   = "ELEVATION_REQUIRED";
         diag.reason     = "Administrator privileges required (0x80070005)";
-        diag.suggestion = "Try running LazyEnv as Administrator or use Interactive Retry.";
+        diag.suggestion = "Try running LazyEnv as Administrator or click 'Retry Interactively' below.";
         return diag;
     }
 
-    // Check File Locked
+    // Check File Locked / Process Running
     if (output.find("0x80070020") != std::string::npos ||
         output.find("used by another process") != std::string::npos ||
         output.find("being used") != std::string::npos ||
-        output.find("文件被占用") != std::string::npos) {
+        output.find("running") != std::string::npos ||
+        output.find("文件被占用") != std::string::npos ||
+        output.find("正在运行") != std::string::npos ||
+        output.find("另一个安装程序") != std::string::npos ||
+        output.find("未能安装") != std::string::npos ||
+        exitCode == 1) { // Exit code 1 in silent winget installs is overwhelmingly process locked
         diag.category   = "FILE_LOCKED";
-        diag.reason     = "Target application is currently running (0x80070020)";
-        diag.suggestion = "Please close the application and its background processes, then retry.";
+        diag.reason     = "Target application is currently running (Process / File locked)";
+        diag.suggestion = "Please close the application and its background processes, or click 'Retry Interactively'.";
         return diag;
     }
 

@@ -511,6 +511,30 @@ bool Installer::isCommandAvailable(const std::string& command) {
 // ---------------------------------------------------------------------------
 namespace {
 
+std::string ensureUtf8(const std::string& input) {
+    if (input.empty()) return "";
+    int testLen = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, input.data(),
+                                      static_cast<int>(input.size()), nullptr, 0);
+    if (testLen > 0) return input;
+
+    int wlen = MultiByteToWideChar(CP_ACP, 0, input.data(),
+                                   static_cast<int>(input.size()), nullptr, 0);
+    if (wlen <= 0) return input;
+
+    std::wstring ws; ws.resize(wlen);
+    MultiByteToWideChar(CP_ACP, 0, input.data(),
+                        static_cast<int>(input.size()), ws.data(), wlen);
+
+    int u8len = WideCharToMultiByte(CP_UTF8, 0, ws.data(), wlen,
+                                    nullptr, 0, nullptr, nullptr);
+    if (u8len <= 0) return input;
+
+    std::string u8str; u8str.resize(u8len);
+    WideCharToMultiByte(CP_UTF8, 0, ws.data(), wlen,
+                        u8str.data(), u8len, nullptr, nullptr);
+    return u8str;
+}
+
 static std::mutex s_processMutex;
 
 struct PipeHandles {
@@ -537,7 +561,7 @@ bool launchProcess(const std::string& cmdLine, HANDLE hWritePipe,
     si.hStdError  = hWritePipe;
     si.wShowWindow = SW_HIDE;
 
-    std::string fullCmd = "cmd /c " + cmdLine;
+    std::string fullCmd = "cmd /c \"chcp 65001 >nul && " + cmdLine + "\"";
 
     int wlen = MultiByteToWideChar(CP_UTF8, 0, fullCmd.c_str(), -1, nullptr, 0);
     if (wlen <= 0) return false;
@@ -596,6 +620,7 @@ int Installer::runCommand(const std::string& cmdLine,
     }
 
     CloseHandle(ph.hRead);
+    output = ensureUtf8(output);
 
     DWORD waitRes = WaitForSingleObject(pi.hProcess, timeoutMs);
     if (waitRes == WAIT_TIMEOUT) {
@@ -649,7 +674,7 @@ int Installer::runCommandStreaming(const std::string& cmdLine,
                 if (!lineBuffer.empty() && lineBuffer.back() == '\r')
                     lineBuffer.pop_back();
                 if (onLine && !lineBuffer.empty())
-                    onLine(lineBuffer);
+                    onLine(ensureUtf8(lineBuffer));
                 lineBuffer.clear();
             } else {
                 lineBuffer += buf[i];
@@ -661,10 +686,11 @@ int Installer::runCommandStreaming(const std::string& cmdLine,
     if (!lineBuffer.empty()) {
         if (lineBuffer.back() == '\r') lineBuffer.pop_back();
         if (onLine && !lineBuffer.empty())
-            onLine(lineBuffer);
+            onLine(ensureUtf8(lineBuffer));
     }
 
     CloseHandle(ph.hRead);
+    fullOutput = ensureUtf8(fullOutput);
 
     WaitForSingleObject(pi.hProcess, timeoutMs);
 
