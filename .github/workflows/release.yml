@@ -20,7 +20,7 @@ jobs:
         run: |
           $tag = "${{ github.ref_name }}".TrimStart('v')
           $cmake = Get-Content CMakeLists.txt -Raw
-          if ($cmake -notmatch 'VERSION\s+(\d+\.\d+\.\d+)') { throw "Cannot parse project VERSION from CMakeLists.txt" }
+          if ($cmake -notmatch 'project\(\s*LazyEnv\s+VERSION\s+(\d+\.\d+\.\d+)') { throw "Cannot parse project VERSION from CMakeLists.txt" }
           $ver = $Matches[1]
           if ($tag -ne $ver) {
             throw "Tag v$tag does not match CMakeLists.txt project version $ver"

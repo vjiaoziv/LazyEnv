@@ -29,9 +29,15 @@ jobs:
           if (!(Test-Path $exe)) { throw "$exe not found" }
           $res = "build/Release/resources/index.html"
           if (!(Test-Path $res)) { throw "$res not found" }
+          $cmake = Get-Content CMakeLists.txt -Raw
+          if ($cmake -notmatch 'project\(\s*LazyEnv\s+VERSION\s+(\d+\.\d+\.\d+)') { throw "Cannot parse project VERSION" }
+          $expected = $Matches[1]
           $ver = (Get-Item $exe).VersionInfo.ProductVersion
-          Write-Host "LazyEnv.exe ProductVersion: $ver"
-          if ($ver -notmatch '^\d+\.\d+\.\d+\.0$') { throw "Unexpected version resource: $ver" }
+          Write-Host "expected $expected, exe ProductVersion $ver"
+          if ($ver -ne $expected) { throw "Version resource $ver != CMakeLists $expected" }
+          $stamped = Select-String -Path $res -Pattern 'LazyEnv v(\d+\.\d+\.\d+)' -AllMatches |
+            ForEach-Object { $_.Matches } | ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique
+          if ($stamped -ne $expected) { throw "Frontend stamped version '$stamped' != $expected" }
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
