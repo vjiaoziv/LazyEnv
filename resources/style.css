@@ -502,7 +502,10 @@ textarea.input {
     z-index: 2000; backdrop-filter: blur(4px);
 }
 
-.dialog-overlay--active { display: flex; }
+.dialog-overlay--visible,
+.dialog-overlay--active {
+    display: flex;
+}
 
 .dialog {
     background: var(--bg-card); border: 1px solid var(--border-strong);
@@ -866,3 +869,197 @@ textarea.input {
 .flex { display: flex; }
 .flex-center { display: flex; align-items: center; }
 .flex-between { display: flex; align-items: center; justify-content: space-between; }
+
+/* ============================================================================
+   Update detection & actions
+   ============================================================================ */
+
+.badge--update {
+    background: rgba(96, 205, 255, 0.18);
+    color: var(--accent);
+    border: 1px solid rgba(96, 205, 255, 0.35);
+    margin-left: 8px;
+    font-size: 11px;
+    padding: 1px 7px;
+    border-radius: 10px;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.badge--uptodate {
+    background: rgba(108, 203, 95, 0.12);
+    color: var(--status-success);
+    margin-left: 8px;
+    font-size: 11px;
+    padding: 1px 7px;
+    border-radius: 10px;
+    font-weight: 500;
+}
+
+.card-row__actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+    margin-left: 12px;
+}
+
+.btn--loading .btn__icon-spin {
+    animation: btn-spin 1s linear infinite;
+}
+
+@keyframes btn-spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+/* ============================================================================
+   Updates Hub Styles
+   ============================================================================ */
+
+.sidebar__badge {
+    margin-left: auto;
+    background: #e81123;
+    color: #fff;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1;
+    padding: 2px 6px;
+    border-radius: 10px;
+    display: inline-block;
+}
+
+.badge--source {
+    font-size: 11px;
+    padding: 1px 7px;
+    border-radius: 4px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.tag--winget { background: rgba(0, 120, 215, 0.2); color: #60cdff; border: 1px solid rgba(0, 120, 215, 0.4); }
+.tag--scoop  { background: rgba(16, 124, 65, 0.2);  color: #6ccb5f; border: 1px solid rgba(16, 124, 65, 0.4); }
+.tag--npm    { background: rgba(203, 56, 55, 0.2);  color: #ff99a4; border: 1px solid rgba(203, 56, 55, 0.4); }
+.tag--pip    { background: rgba(255, 212, 59, 0.2); color: #fce100; border: 1px solid rgba(255, 212, 59, 0.4); }
+
+.card-box {
+    background: var(--bg-card);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    padding: 16px;
+}
+
+.btn-pin {
+    background: transparent;
+    border: 1px solid var(--border-subtle);
+    color: var(--text-secondary);
+    cursor: pointer;
+    border-radius: var(--radius-sm);
+    padding: 4px 8px;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+    transition: all 0.15s ease;
+}
+
+.btn-pin:hover {
+    background: var(--bg-card-hover);
+    color: var(--text-primary);
+}
+
+.btn-pin--active {
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--accent);
+    border-color: var(--accent);
+}
+
+/* ============================================================================
+   Detailed Progress & Failure Diagnostics
+   ============================================================================ */
+
+.subtask-card {
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    padding: 12px 14px;
+}
+
+.phase-pill {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 10px;
+    text-transform: capitalize;
+}
+
+.phase-pill--preparing   { background: rgba(255, 255, 255, 0.08); color: var(--text-secondary); }
+.phase-pill--downloading { background: rgba(96, 205, 255, 0.2);   color: var(--accent); }
+.phase-pill--verifying   { background: rgba(252, 225, 0, 0.2);     color: var(--status-warning); }
+.phase-pill--installing  { background: rgba(0, 120, 215, 0.3);    color: #60cdff; }
+.phase-pill--completed   { background: rgba(108, 203, 95, 0.2);   color: var(--status-success); }
+.phase-pill--failed      { background: rgba(255, 153, 164, 0.2);  color: var(--status-error); }
+
+.progress-bar--sub {
+    height: 4px;
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.diag-card {
+    border-color: rgba(255, 153, 164, 0.35);
+    background: rgba(255, 68, 68, 0.04);
+}
+
+.diag-item {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 153, 164, 0.2);
+    border-radius: var(--radius-sm);
+    padding: 10px 14px;
+    margin-bottom: 8px;
+}
+
+.diag-item__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 4px;
+}
+
+.diag-item__reason {
+    font-size: 12px;
+    color: var(--status-error);
+    margin-bottom: 2px;
+}
+
+.diag-item__sugg {
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+.diag-category-badge {
+    font-size: 10px;
+    font-weight: 700;
+    padding: 1px 6px;
+    border-radius: 4px;
+    background: rgba(255, 153, 164, 0.2);
+    color: var(--status-error);
+}
+
+.tab-badge {
+    margin-left: 6px;
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--text-secondary);
+    font-size: 11px;
+    font-weight: 600;
+    padding: 1px 6px;
+    border-radius: 8px;
+    display: inline-block;
+}
+
+.tab--active .tab-badge {
+    background: var(--accent);
+    color: #000;
+}

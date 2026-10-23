@@ -27,8 +27,120 @@
 #include <sstream>
 #include <algorithm>
 #include <format>
+#include <unordered_map>
+#include <mutex>
+#include <cctype>
 
 namespace lazyenv {
+
+namespace {
+
+// Extract sequence of integer version components safely
+std::vector<int> extractVersionNumbers(const std::string& str) {
+    std::vector<int> numbers;
+    size_t i = 0;
+    while (i < str.size()) {
+        if (std::isdigit(static_cast<unsigned char>(str[i]))) {
+            long long val = 0;
+            while (i < str.size() && std::isdigit(static_cast<unsigned char>(str[i]))) {
+                if (val < 1000000) {
+                    val = val * 10 + (str[i] - '0');
+                }
+                ++i;
+            }
+            numbers.push_back(static_cast<int>(val));
+            if (numbers.size() >= 4) break;
+            if (i < str.size() && (str[i] == '.' || str[i] == '-')) {
+                ++i;
+            } else {
+                break;
+            }
+        } else {
+            ++i;
+        }
+    }
+    return numbers;
+}
+
+// Returns: 1 if v2 > v1 (update available), -1 if v2 < v1, 0 if equal/undetermined
+int compareVersionStrings(const std::string& v1, const std::string& v2) {
+    auto nums1 = extractVersionNumbers(v1);
+    auto nums2 = extractVersionNumbers(v2);
+    if (nums1.empty() || nums2.empty()) return 0;
+    size_t len = (std::max)(nums1.size(), nums2.size());
+    for (size_t i = 0; i < len; ++i) {
+        int n1 = (i < nums1.size()) ? nums1[i] : 0;
+        int n2 = (i < nums2.size()) ? nums2[i] : 0;
+        if (n2 > n1) return 1;
+        if (n2 < n1) return -1;
+    }
+    return 0;
+}
+
+std::string toLower(std::string s) {
+    std::transform(s.begin(), s.end(), s.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    return s;
+}
+
+struct WingetUpgradeEntry {
+    std::string name;
+    std::string id;
+    std::string version;
+    std::string available;
+};
+
+std::vector<WingetUpgradeEntry> parseWingetUpgradeOutput(const std::string& output) {
+    std::vector<WingetUpgradeEntry> entries;
+    std::istringstream stream(output);
+    std::string line;
+    bool headerFound = false;
+
+    while (std::getline(stream, line)) {
+        if (!line.empty() && line.back() == '\r') line.pop_back();
+        if (line.empty()) continue;
+
+        if (line.find("---") != std::string::npos) {
+            headerFound = true;
+            continue;
+        }
+
+        if (!headerFound) continue;
+
+        std::istringstream lineStream(line);
+        std::vector<std::string> tokens;
+        std::string tok;
+        while (lineStream >> tok) {
+            tokens.push_back(tok);
+        }
+
+        if (tokens.size() >= 4) {
+            size_t n = tokens.size();
+            bool hasSource = (tokens[n - 1] == "winget" || tokens[n - 1] == "msstore");
+            size_t availIdx = hasSource ? (n >= 2 ? n - 2 : 0) : n - 1;
+            size_t verIdx = availIdx > 0 ? availIdx - 1 : 0;
+            size_t idIdx = verIdx > 0 ? verIdx - 1 : 0;
+
+            if (availIdx < n && verIdx < n && idIdx < n && idIdx > 0) {
+                WingetUpgradeEntry entry;
+                entry.available = tokens[availIdx];
+                entry.version = tokens[verIdx];
+                entry.id = tokens[idIdx];
+
+                std::string name;
+                for (size_t i = 0; i < idIdx; ++i) {
+                    if (!name.empty()) name += " ";
+                    name += tokens[i];
+                }
+                entry.name = name;
+                entries.push_back(entry);
+            }
+        }
+    }
+    return entries;
+}
+
+} // anonymous namespace
 
 // ===========================================================================
 // Installer
@@ -40,11 +152,46 @@ void Installer::setProgressCallback(ProgressCallback cb) {
 }
 
 // ---------------------------------------------------------------------------
+// Resolve winget executable path or command name safely via Win32 API
+// ---------------------------------------------------------------------------
+std::string Installer::getWingetExecutable() {
+    static std::string cached;
+    if (!cached.empty()) return cached;
+
+    // Check if winget is directly callable in PATH
+    if (isCommandAvailable("winget")) {
+        cached = "winget";
+        return cached;
+    }
+
+    // Check LOCALAPPDATA WindowsApps safely using Win32 GetFileAttributesW
+    // Do NOT use std::filesystem::exists on AppExecutionAlias reparse points.
+    wchar_t localAppData[MAX_PATH];
+    if (GetEnvironmentVariableW(L"LOCALAPPDATA", localAppData, MAX_PATH) > 0) {
+        std::wstring winApps = std::wstring(localAppData) + L"\\Microsoft\\WindowsApps\\winget.exe";
+        DWORD attr = GetFileAttributesW(winApps.c_str());
+        if (attr != INVALID_FILE_ATTRIBUTES && !(attr & FILE_ATTRIBUTE_DIRECTORY)) {
+            int len = WideCharToMultiByte(CP_UTF8, 0, winApps.c_str(), -1, nullptr, 0, nullptr, nullptr);
+            if (len > 0) {
+                std::string pathUtf8(len - 1, '\0');
+                WideCharToMultiByte(CP_UTF8, 0, winApps.c_str(), -1, pathUtf8.data(), len, nullptr, nullptr);
+                cached = "\"" + pathUtf8 + "\"";
+                return cached;
+            }
+        }
+    }
+
+    cached = "winget";
+    return cached;
+}
+
+// ---------------------------------------------------------------------------
 // winget availability check
 // ---------------------------------------------------------------------------
 bool Installer::isWingetAvailable() {
     std::string output;
-    int rc = runCommand("winget --version", output, 10000);
+    std::string exe = getWingetExecutable();
+    int rc = runCommand(exe + " --version", output, 10000);
     return rc == 0 && !output.empty();
 }
 
@@ -62,9 +209,9 @@ InstallResult Installer::installPackage(const PackageInfo& pkg) {
 
     // Build winget command
     std::string cmd = std::format(
-        "winget install --id {} --exact --silent "
+        "{} install --id {} --exact --silent "
         "--accept-package-agreements --accept-source-agreements",
-        pkg.id);
+        getWingetExecutable(), pkg.id);
 
     result.exitCode = runCommand(cmd, result.output, 600000); // 10 min timeout
 
@@ -113,6 +260,180 @@ std::vector<InstallResult> Installer::installBatch(
 }
 
 // ---------------------------------------------------------------------------
+// Hybrid update check (winget + fallback)
+// ---------------------------------------------------------------------------
+std::vector<UpdateInfo> Installer::checkUpdates(const std::vector<DetectedEnvItem>& installedEnvs) {
+    std::vector<UpdateInfo> updates;
+    updates.reserve(installedEnvs.size());
+
+    static const std::unordered_map<std::string, std::pair<std::string, std::string>> kKnownPackageMap = {
+        {"python",       {"Python.Python.3.12", "Python 3.12"}},
+        {"python3",      {"Python.Python.3.12", "Python 3.12"}},
+        {"node",         {"OpenJS.NodeJS.LTS", "Node.js (LTS)"}},
+        {"go",           {"GoLang.Go", "Go"}},
+        {"rustc",        {"Rustlang.Rustup", "Rust (rustup)"}},
+        {"cargo",        {"Rustlang.Rustup", "Rust (rustup)"}},
+        {"java",         {"Oracle.JDK.21", "Java JDK 21"}},
+        {"git",          {"Git.Git", "Git"}},
+        {"cmake",        {"Kitware.CMake", "CMake"}},
+        {"ninja",        {"Ninja-build.Ninja", "Ninja"}},
+        {"clang",        {"LLVM.LLVM", "LLVM/Clang"}},
+        {"gh",           {"GitHub.cli", "GitHub CLI"}},
+        {"code",         {"Microsoft.VisualStudioCode", "VS Code"}},
+        {"nvim",         {"Neovim.Neovim", "Neovim"}},
+        {"docker",       {"Docker.DockerDesktop", "Docker Desktop"}},
+        {"jq",           {"jqlang.jq", "jq"}},
+        {"rg",           {"BurntSushi.ripgrep.MSVC", "ripgrep"}},
+        {"fd",           {"sharkdp.fd", "fd"}},
+        {"fzf",          {"junegunn.fzf", "fzf"}},
+        {"pwsh",         {"Microsoft.PowerShell", "PowerShell"}},
+        {"ffmpeg",       {"Gyan.FFmpeg", "FFmpeg"}},
+        {"curl",         {"curl.curl", "curl"}}
+    };
+
+    try {
+        // Layer 1: Query winget upgrade list
+        std::string wingetOut;
+        std::string wingetCmd = getWingetExecutable() + " upgrade --include-unknown --accept-source-agreements --disable-interactivity 2>&1";
+        runCommand(wingetCmd, wingetOut, 15000);
+
+        auto wingetUpgrades = parseWingetUpgradeOutput(wingetOut);
+
+        for (const auto& env : installedEnvs) {
+            UpdateInfo info;
+            info.command        = env.command;
+            info.name           = env.name;
+            info.currentVersion = env.version;
+            info.hasUpdate      = false;
+
+            std::string cmdLower  = toLower(env.command);
+            std::string nameLower = toLower(env.name);
+
+            auto it = kKnownPackageMap.find(cmdLower);
+            if (it != kKnownPackageMap.end()) {
+                info.packageId = it->second.first;
+            }
+
+            // Check if matched in winget upgrades
+            bool matched = false;
+            for (const auto& wEntry : wingetUpgrades) {
+                std::string widLower   = toLower(wEntry.id);
+                std::string wnameLower = toLower(wEntry.name);
+
+                bool idMatch = (!info.packageId.empty() && widLower == toLower(info.packageId));
+                bool nameMatch = (!widLower.empty() && widLower.find(cmdLower) != std::string::npos) ||
+                                 (!wnameLower.empty() && (wnameLower.find(cmdLower) != std::string::npos ||
+                                                          wnameLower.find(nameLower) != std::string::npos));
+
+                if (idMatch || nameMatch) {
+                    info.packageId     = wEntry.id;
+                    info.latestVersion = wEntry.available;
+                    info.hasUpdate     = true;
+                    info.updateSource  = "winget";
+                    matched            = true;
+                    break;
+                }
+            }
+
+            // Layer 2: Tool-specific fallbacks
+            if (!matched) {
+                if (cmdLower == "rustc" || cmdLower == "cargo") {
+                    std::string rustupOut;
+                    int rc = runCommand("rustup check 2>&1", rustupOut, 8000);
+                    if (rc == 0 && (rustupOut.find("Update available") != std::string::npos ||
+                                    rustupOut.find("update available") != std::string::npos)) {
+                        info.hasUpdate     = true;
+                        info.latestVersion = "Latest (rustup)";
+                        info.updateSource  = "rustup";
+                        matched            = true;
+                    }
+                } else if (cmdLower == "npm") {
+                    std::string npmOut;
+                    int rc = runCommand("npm view npm version 2>&1", npmOut, 8000);
+                    if (rc == 0 && !npmOut.empty()) {
+                        auto nl = npmOut.find('\n');
+                        std::string latestVer = npmOut.substr(0, nl == std::string::npos ? npmOut.size() : nl);
+                        while (!latestVer.empty() && (latestVer.back() == '\r' || latestVer.back() == ' '))
+                            latestVer.pop_back();
+
+                        if (!latestVer.empty() && compareVersionStrings(env.version, latestVer) > 0) {
+                            info.hasUpdate     = true;
+                            info.latestVersion = latestVer;
+                            info.updateSource  = "npm";
+                            matched            = true;
+                        }
+                    }
+                }
+            }
+
+            updates.push_back(info);
+        }
+    } catch (...) {
+        // Fallback: return current env list with hasUpdate=false rather than crashing
+        for (const auto& env : installedEnvs) {
+            UpdateInfo info;
+            info.command        = env.command;
+            info.name           = env.name;
+            info.currentVersion = env.version;
+            info.hasUpdate      = false;
+            updates.push_back(info);
+        }
+    }
+
+    return updates;
+}
+
+// ---------------------------------------------------------------------------
+// Upgrade specific environment
+// ---------------------------------------------------------------------------
+InstallResult Installer::upgradeEnvironment(const std::string& command,
+                                            const std::string& packageId,
+                                            const std::string& displayName) {
+    InstallResult result;
+    result.packageId = packageId.empty() ? command : packageId;
+    result.status    = InstallStatus::Running;
+
+    if (progressCb_)
+        progressCb_(result.packageId, InstallStatus::Running,
+                    "Upgrading " + displayName + "...");
+
+    std::string cmd;
+    if (!packageId.empty()) {
+        cmd = std::format(
+            "{} upgrade --id {} --exact --silent "
+            "--accept-package-agreements --accept-source-agreements",
+            getWingetExecutable(), packageId);
+    } else {
+        std::string cmdLower = toLower(command);
+        if (cmdLower == "rustc" || cmdLower == "cargo") {
+            cmd = "rustup update";
+        } else if (cmdLower == "npm") {
+            cmd = "npm install -g npm@latest";
+        } else {
+            cmd = std::format("{} upgrade --name \"{}\" --silent --accept-package-agreements --accept-source-agreements",
+                              getWingetExecutable(), displayName);
+        }
+    }
+
+    result.exitCode = runCommand(cmd, result.output, 600000); // 10 min timeout
+
+    if (result.exitCode == 0) {
+        result.status = InstallStatus::Success;
+        if (progressCb_)
+            progressCb_(result.packageId, InstallStatus::Success,
+                        displayName + " upgraded successfully.");
+    } else {
+        result.status = InstallStatus::Failed;
+        if (progressCb_)
+            progressCb_(result.packageId, InstallStatus::Failed,
+                        std::format("{} upgrade failed (exit code {}).",
+                                    displayName, result.exitCode));
+    }
+
+    return result;
+}
+
+// ---------------------------------------------------------------------------
 // PATH management
 // ---------------------------------------------------------------------------
 bool Installer::addToUserPath(const std::string& directory) {
@@ -132,9 +453,9 @@ bool Installer::addToUserPath(const std::string& directory) {
                    [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
 
     if (lowerPath.find(lowerDir) != std::string::npos)
-        return true; // Already present
+        return true; // Already in PATH
 
-    // Append
+    // Append with semicolon separator
     std::string newPath = currentPath;
     if (!newPath.empty() && newPath.back() != ';')
         newPath += ';';
@@ -190,6 +511,8 @@ bool Installer::isCommandAvailable(const std::string& command) {
 // ---------------------------------------------------------------------------
 namespace {
 
+static std::mutex s_processMutex;
+
 struct PipeHandles {
     HANDLE hRead  = nullptr;
     HANDLE hWrite = nullptr;
@@ -216,23 +539,27 @@ bool launchProcess(const std::string& cmdLine, HANDLE hWritePipe,
 
     std::string fullCmd = "cmd /c " + cmdLine;
 
-    // Convert the UTF-8 command line to UTF-16 properly. A naive
-    // byte-by-byte mapping (wstring(begin,end)) would garble any
-    // non-ASCII characters (e.g. Chinese paths or package names).
-    int wlen = MultiByteToWideChar(CP_UTF8, 0, fullCmd.c_str(), -1,
-                                   nullptr, 0);
-    std::wstring wcmd(wlen > 0 ? static_cast<size_t>(wlen) - 1 : 0, L'\0');
-    if (wlen > 0) {
-        MultiByteToWideChar(CP_UTF8, 0, fullCmd.c_str(), -1,
-                            wcmd.data(), wlen);
-    }
+    int wlen = MultiByteToWideChar(CP_UTF8, 0, fullCmd.c_str(), -1, nullptr, 0);
+    if (wlen <= 0) return false;
+    std::wstring wcmd(wlen, L'\0');
+    MultiByteToWideChar(CP_UTF8, 0, fullCmd.c_str(), -1, &wcmd[0], wlen);
 
-    return CreateProcessW(
-        nullptr, wcmd.data(),
-        nullptr, nullptr, TRUE,
-        CREATE_NO_WINDOW,
-        nullptr, nullptr,
-        &si, &pi) != 0;
+    si.hStdInput = GetStdHandle(STD_INPUT_HANDLE);
+
+    BOOL ok = CreateProcessW(
+        nullptr,
+        wcmd.data(),
+        nullptr,
+        nullptr,
+        TRUE,
+        CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP,
+        nullptr,
+        nullptr,
+        &si,
+        &pi
+    );
+
+    return ok != FALSE;
 }
 
 } // anonymous namespace
@@ -246,15 +573,19 @@ int Installer::runCommand(const std::string& cmdLine,
     output.clear();
 
     PipeHandles ph;
-    if (!createOutputPipe(ph)) return -1;
-
     PROCESS_INFORMATION pi{};
-    if (!launchProcess(cmdLine, ph.hWrite, pi)) {
-        CloseHandle(ph.hRead);
+
+    {
+        std::lock_guard<std::mutex> lock(s_processMutex);
+        if (!createOutputPipe(ph)) return -1;
+
+        if (!launchProcess(cmdLine, ph.hWrite, pi)) {
+            CloseHandle(ph.hRead);
+            CloseHandle(ph.hWrite);
+            return -1;
+        }
         CloseHandle(ph.hWrite);
-        return -1;
     }
-    CloseHandle(ph.hWrite);
 
     // Read all output
     char buf[4096];
@@ -263,9 +594,13 @@ int Installer::runCommand(const std::string& cmdLine,
         buf[bytesRead] = '\0';
         output += buf;
     }
+
     CloseHandle(ph.hRead);
 
-    WaitForSingleObject(pi.hProcess, timeoutMs);
+    DWORD waitRes = WaitForSingleObject(pi.hProcess, timeoutMs);
+    if (waitRes == WAIT_TIMEOUT) {
+        TerminateProcess(pi.hProcess, static_cast<UINT>(-1));
+    }
 
     DWORD exitCode = 0;
     GetExitCodeProcess(pi.hProcess, &exitCode);
@@ -285,15 +620,19 @@ int Installer::runCommandStreaming(const std::string& cmdLine,
     fullOutput.clear();
 
     PipeHandles ph;
-    if (!createOutputPipe(ph)) return -1;
-
     PROCESS_INFORMATION pi{};
-    if (!launchProcess(cmdLine, ph.hWrite, pi)) {
-        CloseHandle(ph.hRead);
+
+    {
+        std::lock_guard<std::mutex> lock(s_processMutex);
+        if (!createOutputPipe(ph)) return -1;
+
+        if (!launchProcess(cmdLine, ph.hWrite, pi)) {
+            CloseHandle(ph.hRead);
+            CloseHandle(ph.hWrite);
+            return -1;
+        }
         CloseHandle(ph.hWrite);
-        return -1;
     }
-    CloseHandle(ph.hWrite);
 
     // Read output and split into lines, calling onLine for each
     std::string lineBuffer;
@@ -307,7 +646,6 @@ int Installer::runCommandStreaming(const std::string& cmdLine,
         // Split into lines
         for (DWORD i = 0; i < bytesRead; ++i) {
             if (buf[i] == '\n') {
-                // Trim trailing \r
                 if (!lineBuffer.empty() && lineBuffer.back() == '\r')
                     lineBuffer.pop_back();
                 if (onLine && !lineBuffer.empty())

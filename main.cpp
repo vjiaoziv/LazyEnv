@@ -22,6 +22,8 @@
 #include "webview_host.h"
 #include "installer.h"
 #include "rollback.h"
+#include "package_manager.h"
+#include "update_manager.h"
 
 #include <Windows.h>
 #include <windowsx.h>
@@ -54,6 +56,7 @@ static constexpr int     kDefaultHeight = 750;
 static lazyenv::WebViewHost     g_webview;
 static lazyenv::Installer       g_installer;
 static lazyenv::RollbackManager g_rollback;
+static lazyenv::UpdateManager  g_updateManager(g_rollback);
 // g_msgMutex is no longer needed; postMessage is now thread-safe via message queue
 static HWND                     g_mainWindow = nullptr;
 static bool                     g_isMaximized = false;
@@ -282,13 +285,75 @@ std::string probeCommand(const std::string& command, const std::string& category
         jsonEscape(command));
 }
 
+
+std::vector<lazyenv::DetectedEnvItem> parseEnvironmentsFromJson(const std::string& message) {
+    std::vector<lazyenv::DetectedEnvItem> list;
+    auto envsPos = message.find("\"environments\"");
+    if (envsPos == std::string::npos) return list;
+    auto startArr = message.find('[', envsPos);
+    if (startArr == std::string::npos) return list;
+    auto endArr = message.rfind(']');
+    if (endArr == std::string::npos || endArr <= startArr) return list;
+
+    size_t pos = startArr + 1;
+    while (pos < endArr) {
+        auto objStart = message.find('{', pos);
+        if (objStart == std::string::npos || objStart >= endArr) break;
+        auto objEnd = message.find('}', objStart);
+        if (objEnd == std::string::npos || objEnd > endArr) break;
+        std::string itemJson = message.substr(objStart, objEnd - objStart + 1);
+        lazyenv::DetectedEnvItem item;
+        item.name = extractJsonValue(itemJson, "name");
+        item.command = extractJsonValue(itemJson, "command");
+        item.version = extractJsonValue(itemJson, "version");
+        item.category = extractJsonValue(itemJson, "category");
+        if (!item.command.empty()) {
+            list.push_back(item);
+        }
+        pos = objEnd + 1;
+    }
+    return list;
+}
+
+std::vector<lazyenv::UpgradeTarget> parseUpgradeTargetsFromJson(const std::string& message) {
+    std::vector<lazyenv::UpgradeTarget> targets;
+    auto tPos = message.find("\"targets\"");
+    if (tPos == std::string::npos) return targets;
+    auto startArr = message.find('[', tPos);
+    if (startArr == std::string::npos) return targets;
+    auto endArr = message.rfind(']');
+    if (endArr == std::string::npos || endArr <= startArr) return targets;
+
+    size_t pos = startArr + 1;
+    while (pos < endArr) {
+        auto objStart = message.find('{', pos);
+        if (objStart == std::string::npos || objStart >= endArr) break;
+        auto objEnd = message.find('}', objStart);
+        if (objEnd == std::string::npos || objEnd > endArr) break;
+        std::string itemJson = message.substr(objStart, objEnd - objStart + 1);
+
+        lazyenv::UpgradeTarget tgt;
+        tgt.id     = extractJsonValue(itemJson, "id");
+        tgt.name   = extractJsonValue(itemJson, "name");
+        std::string srcStr = extractJsonValue(itemJson, "source");
+        tgt.source = lazyenv::stringToSourceType(srcStr);
+
+        if (!tgt.id.empty()) {
+            targets.push_back(tgt);
+        }
+        pos = objEnd + 1;
+    }
+    return targets;
+}
+
 } // anonymous namespace
 
 // ---------------------------------------------------------------------------
 // Message handler
 // ---------------------------------------------------------------------------
 std::string handleWebMessage(const std::string& message) {
-    std::string action = extractJsonValue(message, "action");
+    try {
+        std::string action = extractJsonValue(message, "action");
 
     // ------ Window controls ------
     if (action == "windowMinimize") {
@@ -322,9 +387,11 @@ std::string handleWebMessage(const std::string& message) {
     // ------ Detect installed environments ------
     if (action == "detectEnvironments") {
         std::thread([]() {
-            std::string envJson = detectInstalledEnvironments();
-            std::string respMsg = "{\"action\":\"environmentsDetected\",\"environments\":" + envJson + "}";
-            g_webview.postMessage(respMsg);
+            try {
+                std::string envJson = detectInstalledEnvironments();
+                std::string respMsg = "{\"action\":\"environmentsDetected\",\"environments\":" + envJson + "}";
+                g_webview.postMessage(respMsg);
+            } catch (...) {}
         }).detach();
         return "{\"action\":\"detectStarted\"}";
     }
@@ -336,8 +403,10 @@ std::string handleWebMessage(const std::string& message) {
         if (cat.empty()) cat = "other";
 
         std::thread([cmd, cat]() {
-            std::string result = probeCommand(cmd, cat);
-            g_webview.postMessage(result);
+            try {
+                std::string result = probeCommand(cmd, cat);
+                g_webview.postMessage(result);
+            } catch (...) {}
         }).detach();
         return "{\"action\":\"probeStarted\"}";
     }
@@ -346,15 +415,223 @@ std::string handleWebMessage(const std::string& message) {
     if (action == "uninstallPackage") {
         std::string pkgName = extractJsonValue(message, "command");
         std::thread([pkgName]() {
-            std::string output;
-            std::string cmd = "winget uninstall --name \"" + pkgName + "\" --silent --accept-source-agreements 2>&1";
-            int rc = lazyenv::Installer::runCommand(cmd, output, 300000);
-            std::string respMsg = std::format(
-                "{{\"action\":\"uninstallResult\",\"command\":\"{}\",\"success\":{},\"output\":\"{}\"}}",
-                jsonEscape(pkgName), rc == 0 ? "true" : "false", jsonEscape(output.substr(0, 500)));
-            g_webview.postMessage(respMsg);
+            try {
+                std::string output;
+                std::string cmd = "winget uninstall --name \"" + pkgName + "\" --silent --accept-source-agreements 2>&1";
+                int rc = lazyenv::Installer::runCommand(cmd, output, 300000);
+                std::string respMsg = std::format(
+                    "{{\"action\":\"uninstallResult\",\"command\":\"{}\",\"success\":{},\"output\":\"{}\"}}",
+                    jsonEscape(pkgName), rc == 0 ? "true" : "false", jsonEscape(output.substr(0, 500)));
+                g_webview.postMessage(respMsg);
+            } catch (...) {}
         }).detach();
         return "{\"action\":\"uninstallStarted\"}";
+    }
+
+    // ------ Updates Hub: Get all updates from all providers ------
+    if (action == "getAllUpdates") {
+        std::thread([]() {
+            try {
+                auto items = g_updateManager.checkAllUpdates();
+                std::ostringstream os;
+                os << "{\"action\":\"allUpdatesDetected\",\"updates\":[";
+                for (size_t i = 0; i < items.size(); ++i) {
+                    const auto& it = items[i];
+                    os << "{\"id\":\"" << jsonEscape(it.id)
+                       << "\",\"name\":\"" << jsonEscape(it.name)
+                       << "\",\"currentVersion\":\"" << jsonEscape(it.currentVersion)
+                       << "\",\"latestVersion\":\"" << jsonEscape(it.latestVersion)
+                       << "\",\"source\":\"" << jsonEscape(lazyenv::sourceTypeToString(it.source))
+                       << "\",\"isPinned\":" << (it.isPinned ? "true" : "false")
+                       << "}";
+                    if (i + 1 < items.size()) os << ",";
+                }
+                os << "]}";
+                g_webview.postMessage(os.str());
+            } catch (const std::exception& e) {
+                std::string err = std::format("{{\"action\":\"error\",\"message\":\"Failed to query updates: {}\"}}", jsonEscape(e.what()));
+                g_webview.postMessage(err);
+            } catch (...) {
+                g_webview.postMessage("{\"action\":\"error\",\"message\":\"Failed to query updates (unknown error)\"}");
+            }
+        }).detach();
+        return "{\"action\":\"getAllUpdatesStarted\"}";
+    }
+
+    // ------ Updates Hub: Batch upgrade queue with detailed phase & diagnostics ------
+    if (action == "upgradeBatch") {
+        auto targets = parseUpgradeTargetsFromJson(message);
+        std::string interStr = extractJsonValue(message, "interactive");
+        bool interactive = (interStr == "true");
+
+        std::thread([targets, interactive]() {
+            try {
+                auto summary = g_updateManager.upgradeBatch(
+                    targets,
+                    [](const lazyenv::UpgradeTarget& tgt, int current, int total, const lazyenv::UpgradeProgressDetail& pd) {
+                        std::ostringstream os;
+                        os << "{\"action\":\"upgradeBatchProgress\","
+                           << "\"packageId\":\"" << jsonEscape(tgt.id) << "\","
+                           << "\"name\":\"" << jsonEscape(tgt.name) << "\","
+                           << "\"source\":\"" << jsonEscape(lazyenv::sourceTypeToString(tgt.source)) << "\","
+                           << "\"current\":" << current << ","
+                           << "\"total\":" << total << ","
+                           << "\"phase\":\"" << jsonEscape(pd.phase) << "\","
+                           << "\"percent\":" << pd.percent << ","
+                           << "\"detail\":\"" << jsonEscape(pd.detail) << "\","
+                           << "\"message\":\"" << jsonEscape(pd.message) << "\"}";
+                        g_webview.postMessage(os.str());
+                    },
+                    [](const std::string& line) {
+                        std::ostringstream los;
+                        los << "{\"action\":\"upgradeBatchLog\",\"line\":\"" << jsonEscape(line) << "\"}";
+                        g_webview.postMessage(los.str());
+                    },
+                    interactive
+                );
+
+                std::ostringstream os;
+                os << "{\"action\":\"upgradeBatchComplete\","
+                   << "\"successCount\":" << summary.successCount << ","
+                   << "\"failCount\":" << summary.failCount << ","
+                   << "\"total\":" << summary.total << ","
+                   << "\"snapshotId\":\"" << jsonEscape(summary.snapshotId) << "\","
+                   << "\"successes\":[";
+                for (size_t i = 0; i < summary.successes.size(); ++i) {
+                    os << "\"" << jsonEscape(summary.successes[i]) << "\"";
+                    if (i + 1 < summary.successes.size()) os << ",";
+                }
+                os << "],\"failures\":[";
+                for (size_t i = 0; i < summary.failures.size(); ++i) {
+                    const auto& f = summary.failures[i];
+                    os << "{\"id\":\"" << jsonEscape(f.id) << "\","
+                       << "\"name\":\"" << jsonEscape(f.name) << "\","
+                       << "\"source\":\"" << jsonEscape(lazyenv::sourceTypeToString(f.source)) << "\","
+                       << "\"category\":\"" << jsonEscape(f.diagnostic.category) << "\","
+                       << "\"reason\":\"" << jsonEscape(f.diagnostic.reason) << "\","
+                       << "\"suggestion\":\"" << jsonEscape(f.diagnostic.suggestion) << "\","
+                       << "\"output\":\"" << jsonEscape(f.output.substr(0, 300)) << "\"}" ;
+                    if (i + 1 < summary.failures.size()) os << ",";
+                }
+                os << "]}";
+
+                g_webview.postMessage(os.str());
+            } catch (...) {
+                g_webview.postMessage("{\"action\":\"upgradeBatchComplete\",\"successCount\":0,\"failCount\":1,\"total\":1,\"failures\":[]}");
+            }
+        }).detach();
+        return "{\"action\":\"upgradeBatchStarted\"}";
+    }
+
+    // ------ Verify Command execution in real-time ------
+    if (action == "verifyCommand") {
+        std::string cmd = extractJsonValue(message, "command");
+        std::thread([cmd]() {
+            try {
+                std::string out;
+                int rc = lazyenv::Installer::runCommand(cmd + " --version 2>&1", out, 5000);
+                std::ostringstream os;
+                os << "{\"action\":\"verifyResult\","
+                   << "\"command\":\"" << jsonEscape(cmd) << "\","
+                   << "\"output\":\"" << jsonEscape(out.substr(0, 300)) << "\","
+                   << "\"success\":" << (rc == 0 ? "true" : "false") << "}";
+                g_webview.postMessage(os.str());
+            } catch (...) {}
+        }).detach();
+        return "{\"action\":\"verifyStarted\"}";
+    }
+
+    // ------ Updates Hub: Toggle package pin/ignore ------
+    if (action == "togglePinPackage") {
+        std::string pkgId = extractJsonValue(message, "packageId");
+        std::string pinnedStr = extractJsonValue(message, "pinned");
+        bool pin = (pinnedStr == "true");
+        bool ok = g_updateManager.setPackagePinned(pkgId, pin);
+        return std::format("{{\"action\":\"pinResult\",\"packageId\":\"{}\",\"pinned\":{},\"success\":{}}}",
+                           jsonEscape(pkgId), pin ? "true" : "false", ok ? "true" : "false");
+    }
+
+    // ------ Updates Hub: Get pinned packages list ------
+    if (action == "getPinnedPackages") {
+        auto list = g_updateManager.getPinnedPackages();
+        std::ostringstream os;
+        os << "{\"action\":\"pinnedList\",\"packages\":[";
+        for (size_t i = 0; i < list.size(); ++i) {
+            os << "\"" << jsonEscape(list[i]) << "\"";
+            if (i + 1 < list.size()) os << ",";
+        }
+        os << "]}";
+        return os.str();
+    }
+
+    // ------ Check updates for environments ------
+    if (action == "checkUpdates") {
+        auto envList = parseEnvironmentsFromJson(message);
+        std::thread([envList]() {
+            try {
+                auto updates = g_installer.checkUpdates(envList);
+                std::ostringstream os;
+                os << "{\"action\":\"updatesDetected\",\"updates\":[";
+                for (size_t i = 0; i < updates.size(); ++i) {
+                    const auto& u = updates[i];
+                    os << "{\"command\":\"" << jsonEscape(u.command)
+                       << "\",\"name\":\"" << jsonEscape(u.name)
+                       << "\",\"currentVersion\":\"" << jsonEscape(u.currentVersion)
+                       << "\",\"latestVersion\":\"" << jsonEscape(u.latestVersion)
+                       << "\",\"packageId\":\"" << jsonEscape(u.packageId)
+                       << "\",\"updateSource\":\"" << jsonEscape(u.updateSource)
+                       << "\",\"hasUpdate\":" << (u.hasUpdate ? "true" : "false")
+                       << "}";
+                    if (i + 1 < updates.size()) os << ",";
+                }
+                os << "]}";
+                g_webview.postMessage(os.str());
+            } catch (const std::exception& e) {
+                std::string errJson = std::format(
+                    "{{\"action\":\"error\",\"message\":\"Update check error: {}\"}}",
+                    jsonEscape(e.what()));
+                g_webview.postMessage(errJson);
+            } catch (...) {
+                g_webview.postMessage("{\"action\":\"error\",\"message\":\"Update check failed (unknown error)\"}");
+            }
+        }).detach();
+        return "{\"action\":\"checkUpdatesStarted\"}";
+    }
+
+    // ------ Upgrade environment ------
+    if (action == "upgradeEnvironment") {
+        std::string cmd   = extractJsonValue(message, "command");
+        std::string pkgId = extractJsonValue(message, "packageId");
+        std::string name  = extractJsonValue(message, "name");
+        if (name.empty()) name = cmd;
+
+        std::string snapId;
+        try {
+            snapId = g_rollback.createSnapshot("Pre-update snapshot: " + name);
+        } catch (...) {
+            snapId = "";
+        }
+
+        std::thread([cmd, pkgId, name, snapId]() {
+            try {
+                auto res = g_installer.upgradeEnvironment(cmd, pkgId, name);
+                std::string respMsg = std::format(
+                    "{{\"action\":\"upgradeResult\",\"command\":\"{}\",\"success\":{},\"output\":\"{}\",\"snapshotId\":\"{}\"}}",
+                    jsonEscape(cmd), res.status == lazyenv::InstallStatus::Success ? "true" : "false",
+                    jsonEscape(res.output.substr(0, 500)), jsonEscape(snapId));
+                g_webview.postMessage(respMsg);
+            } catch (const std::exception& e) {
+                std::string respMsg = std::format(
+                    "{{\"action\":\"upgradeResult\",\"command\":\"{}\",\"success\":false,\"output\":\"{}\",\"snapshotId\":\"{}\"}}",
+                    jsonEscape(cmd), jsonEscape(e.what()), jsonEscape(snapId));
+                g_webview.postMessage(respMsg);
+            } catch (...) {
+                g_webview.postMessage(std::format(
+                    "{{\"action\":\"upgradeResult\",\"command\":\"{}\",\"success\":false,\"output\":\"Unknown exception during upgrade\"}}",
+                    jsonEscape(cmd)));
+            }
+        }).detach();
+        return "{\"action\":\"upgradeStarted\"}";
     }
 
     // ------ Get catalog ------
@@ -852,13 +1129,19 @@ std::string handleWebMessage(const std::string& message) {
                            jsonEscape(name), jsonEscape(val));
     }
 
-    return "{\"action\":\"error\",\"message\":\"Unknown action\"}";
+        return "{\"action\":\"error\",\"message\":\"Unknown action\"}";
+    } catch (const std::exception& e) {
+        return std::format("{{\"action\":\"error\",\"message\":\"{}\"}}", jsonEscape(e.what()));
+    } catch (...) {
+        return "{\"action\":\"error\",\"message\":\"Internal native error\"}";
+    }
 }
 
 // ---------------------------------------------------------------------------
 // Window procedure - borderless with DWM shadow
 // ---------------------------------------------------------------------------
 LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    try {
     switch (msg) {
     case WM_CREATE: {
         // Extend frame into client area for shadow effect
@@ -969,6 +1252,9 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     default:
         return DefWindowProcW(hwnd, msg, wParam, lParam);
     }
+    } catch (...) {
+        return DefWindowProcW(hwnd, msg, wParam, lParam);
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1047,3 +1333,4 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, LPWSTR, int nCmdShow) {
     CoUninitialize();
     return static_cast<int>(msg.wParam);
 }
+

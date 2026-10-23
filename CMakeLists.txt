@@ -64,6 +64,10 @@ set(SOURCES
     installer.h
     rollback.cpp
     rollback.h
+    package_manager.cpp
+    package_manager.h
+    update_manager.cpp
+    update_manager.h
 )
 
 # ---------------------------------------------------------------------------

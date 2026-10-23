@@ -43,6 +43,29 @@ struct PackageInfo {
 };
 
 // ----------------------------------------------------------------------------
+// Detected environment item (for updates and status)
+// ----------------------------------------------------------------------------
+struct DetectedEnvItem {
+    std::string name;
+    std::string command;
+    std::string version;
+    std::string category;
+};
+
+// ----------------------------------------------------------------------------
+// Environment upgrade information
+// ----------------------------------------------------------------------------
+struct UpdateInfo {
+    std::string command;          // e.g. "git", "node", "python"
+    std::string name;             // e.g. "Git", "Node.js"
+    std::string currentVersion;   // e.g. "2.43.0"
+    std::string latestVersion;    // e.g. "2.44.0"
+    std::string packageId;        // winget ID if applicable, e.g. "Git.Git"
+    std::string updateSource;     // "winget" or "custom-cli"
+    bool        hasUpdate = false;
+};
+
+// ----------------------------------------------------------------------------
 // Installation progress / result
 // ----------------------------------------------------------------------------
 enum class InstallStatus {
@@ -81,11 +104,22 @@ public:
     // Check whether winget is available on this system.
     static bool isWingetAvailable();
 
+    // Resolve winget executable path or command name.
+    static std::string getWingetExecutable();
+
     // Install a single package via winget.
     InstallResult installPackage(const PackageInfo& pkg);
 
     // Install a batch of packages sequentially.
     std::vector<InstallResult> installBatch(const std::vector<PackageInfo>& packages);
+
+    // Check updates for detected local environments using hybrid detection (winget + fallback)
+    std::vector<UpdateInfo> checkUpdates(const std::vector<DetectedEnvItem>& installedEnvs);
+
+    // Upgrade a specific package or command
+    InstallResult upgradeEnvironment(const std::string& command,
+                                     const std::string& packageId,
+                                     const std::string& displayName);
 
     // Append a directory to the user PATH (registry-level, persistent).
     // Returns true if the path was added (or already present).

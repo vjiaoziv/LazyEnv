@@ -44,6 +44,14 @@
     var installTotal = 0;
     var installCurrent = 0;
     var isMaximized = false;
+    var environmentUpdates = new Map();
+    var hubUpdates = [];
+    var currentHubFilter = "all";
+    var selectedHubUpdateIds = new Set();
+    var isCheckingHubUpdates = false;
+    var isBatchUpgrading = false;
+    var lastBatchSummary = null;
+    var isCheckingUpdates = false;
 
     // Settings state
     var envVarScope = "user";   // "user" or "system"
@@ -83,6 +91,158 @@
             case "environmentsDetected":
                 detectedEnvironments = d.environments || [];
                 renderEnvironments();
+                break;
+
+            case "allUpdatesDetected":
+                isCheckingHubUpdates = false;
+                var btnHub = document.getElementById("btnCheckAllUpdates");
+                if (btnHub) {
+                    btnHub.classList.remove("btn--loading");
+                    btnHub.disabled = false;
+                    var s = btnHub.querySelector("span");
+                    if (s) s.textContent = t("updates.checkAll");
+                }
+                hubUpdates = d.updates || [];
+                updateSidebarBadge();
+                renderUpdatesHub(document.getElementById("updatesSearch") ? document.getElementById("updatesSearch").value : "");
+                break;
+
+            case "upgradeBatchProgress":
+                var pBox = document.getElementById("batchProgressBox");
+                if (pBox) pBox.style.display = "block";
+
+                // Overall progress
+                var pTitle = document.getElementById("batchProgressTitle");
+                if (pTitle) pTitle.textContent = "Updating (" + d.current + " / " + d.total + ")...";
+                var pCount = document.getElementById("batchProgressCount");
+                if (pCount) pCount.textContent = d.current + " / " + d.total;
+
+                var overallPct = Math.round(((d.current - 1 + (d.percent > 0 ? d.percent / 100 : 0.4)) / d.total) * 100);
+                var pFill = document.getElementById("batchProgressFill");
+                if (pFill) pFill.style.width = Math.min(100, Math.max(5, overallPct)) + "%";
+
+                // Subtask detailed progress card
+                var sName = document.getElementById("subtaskName");
+                if (sName) sName.textContent = d.name || d.packageId;
+
+                var sSource = document.getElementById("subtaskSource");
+                if (sSource && d.source) {
+                    sSource.textContent = d.source.toUpperCase();
+                    sSource.className = "badge--source tag--" + d.source.toLowerCase();
+                }
+
+                var sPhase = document.getElementById("subtaskPhase");
+                if (sPhase && d.phase) {
+                    sPhase.textContent = t("phase." + d.phase) || d.phase;
+                    sPhase.className = "phase-pill phase-pill--" + d.phase;
+                }
+
+                var sProgressFill = document.getElementById("subtaskProgressFill");
+                if (sProgressFill) {
+                    if (d.percent >= 0) {
+                        sProgressFill.style.width = d.percent + "%";
+                        sProgressFill.style.opacity = "1";
+                    } else {
+                        sProgressFill.style.width = "75%";
+                        sProgressFill.style.opacity = "0.7";
+                    }
+                }
+
+                var sMsg = document.getElementById("subtaskMsg");
+                if (sMsg) sMsg.textContent = d.message || "";
+
+                var sDetail = document.getElementById("subtaskDetail");
+                if (sDetail) sDetail.textContent = d.detail || "";
+                break;
+
+            case "upgradeBatchLog":
+                var lPanel = document.getElementById("batchLogPanel");
+                if (lPanel) {
+                    var el = document.createElement("div");
+                    el.className = "log-line";
+                    el.textContent = d.line;
+                    lPanel.appendChild(el);
+                    lPanel.scrollTop = lPanel.scrollHeight;
+                }
+                break;
+
+            case "upgradeBatchComplete":
+                isBatchUpgrading = false;
+                lastBatchSummary = d;
+                showToast(t("updates.batchComplete", d.successCount, d.failCount), d.failCount === 0 ? "success" : "warning");
+
+                // Auto-refresh home environments if any succeeded
+                if (d.successCount > 0) {
+                    sendNative({ action: "detectEnvironments" });
+                }
+
+                // Show or hide diagnostic card
+                if (d.failCount > 0 && d.failures && d.failures.length > 0) {
+                    renderFailureDiagnostics(d);
+                } else {
+                    var diagBox = document.getElementById("failureDiagnosticBox");
+                    if (diagBox) diagBox.style.display = "none";
+                }
+
+                // Refresh updates list
+                sendNative({ action: "getAllUpdates" });
+                break;
+
+            case "pinResult":
+                if (d.success) {
+                    hubUpdates.forEach(function (u) {
+                        if (u.id === d.packageId) {
+                            u.isPinned = d.pinned;
+                        }
+                    });
+                    updateSidebarBadge();
+                    renderUpdatesHub(document.getElementById("updatesSearch") ? document.getElementById("updatesSearch").value : "");
+                }
+                break;
+
+            case "updatesDetected":
+                isCheckingUpdates = false;
+                var btnCheck = document.getElementById("btnCheckUpdates");
+                if (btnCheck) {
+                    btnCheck.classList.remove("btn--loading");
+                    btnCheck.disabled = false;
+                    var span = btnCheck.querySelector("span");
+                    if (span) span.textContent = t("home.checkUpdates");
+                }
+                environmentUpdates.clear();
+                var updates = d.updates || [];
+                var updateCount = 0;
+                updates.forEach(function (u) {
+                    if (u.command) {
+                        environmentUpdates.set(u.command, u);
+                        if (u.hasUpdate) updateCount++;
+                    }
+                });
+                renderEnvironments(document.getElementById("homeSearch").value);
+                if (updateCount > 0) {
+                    showToast(t("home.updatesFound", updateCount), "info");
+                } else {
+                    showToast(t("home.noUpdatesFound"), "success");
+                }
+                break;
+
+            case "verifyResult":
+                showDialog(
+                    "Command Verification: " + d.command,
+                    "<div class='log-panel' style='max-height:160px; font-size:13px; font-family:var(--font-mono);'>" + esc(d.output || "No output returned") + "</div>",
+                    [{ text: t("dialog.ok"), cls: "btn--accent" }]
+                );
+                break;
+
+            case "upgradeResult":
+                if (d.success) {
+                    showToast(t("home.updateSuccess", d.command), "success");
+                    environmentUpdates.delete(d.command);
+                    sendNative({ action: "probeCommand", command: d.command });
+                } else {
+                    showToast(t("home.updateFailed", d.command), "error");
+                }
+                renderEnvironments(document.getElementById("homeSearch").value);
                 break;
 
             case "probeResult":
@@ -317,6 +477,68 @@
         if (obj.action === "deleteEnvVar") {
             setTimeout(function () { handleNative({ action: "envVarDeleteResult", success: true }); }, 300);
         }
+        if (obj.action === "getAllUpdates") {
+            setTimeout(function () {
+                handleNative({
+                    action: "allUpdatesDetected",
+                    updates: [
+                        { id: "Git.Git", name: "Git", currentVersion: "2.43.0", latestVersion: "2.44.0", source: "winget", isPinned: false },
+                        { id: "OpenJS.NodeJS.LTS", name: "Node.js (LTS)", currentVersion: "20.10.0", latestVersion: "22.13.0", source: "winget", isPinned: false },
+                        { id: "ripgrep", name: "ripgrep", currentVersion: "14.0.0", latestVersion: "14.1.0", source: "scoop", isPinned: false },
+                        { id: "pnpm", name: "pnpm", currentVersion: "9.1.0", latestVersion: "9.15.0", source: "npm", isPinned: false },
+                        { id: "ruff", name: "ruff", currentVersion: "0.2.0", latestVersion: "0.4.1", source: "pip", isPinned: true },
+                    ]
+                });
+            }, 800);
+        }
+        if (obj.action === "upgradeBatch") {
+            var tgts = obj.targets || [];
+            tgts.forEach(function (t, idx) {
+                setTimeout(function () {
+                    handleNative({ action: "upgradeBatchProgress", packageId: t.id, current: idx + 1, total: tgts.length, message: "Upgrading " + t.name + "..." });
+                    handleNative({ action: "upgradeBatchLog", line: "Successfully updated " + t.name });
+                }, (idx + 1) * 600);
+            });
+            setTimeout(function () {
+                handleNative({ action: "upgradeBatchComplete", successCount: tgts.length, failCount: 0 });
+            }, (tgts.length + 1) * 600);
+        }
+        if (obj.action === "togglePinPackage") {
+            setTimeout(function () {
+                handleNative({ action: "pinResult", packageId: obj.packageId, pinned: obj.pinned, success: true });
+            }, 200);
+        }
+        if (obj.action === "checkUpdates") {
+            setTimeout(function () {
+                var envs = obj.environments || [];
+                var mockUpdates = envs.map(function (e) {
+                    var hasUp = (e.command === "python" || e.command === "node" || e.command === "git");
+                    return {
+                        command: e.command,
+                        name: e.name,
+                        currentVersion: e.version,
+                        latestVersion: hasUp ? "9.9.0" : e.version,
+                        packageId: e.command + ".MockId",
+                        updateSource: "mock",
+                        hasUpdate: hasUp
+                    };
+                });
+                handleNative({
+                    action: "updatesDetected",
+                    updates: mockUpdates
+                });
+            }, 1000);
+        }
+        if (obj.action === "upgradeEnvironment") {
+            setTimeout(function () {
+                handleNative({
+                    action: "upgradeResult",
+                    command: obj.command,
+                    success: true,
+                    output: "Successfully upgraded (mock)"
+                });
+            }, 1200);
+        }
         if (obj.action === "windowMinimize" || obj.action === "windowMaximize" || obj.action === "windowClose" || obj.action === "windowDragStart") {
             console.log("Window action:", obj.action);
         }
@@ -338,6 +560,10 @@
         });
 
         if (page === "home") sendNative({ action: "detectEnvironments" });
+        if (page === "updates") {
+            if (hubUpdates.length === 0) sendNative({ action: "getAllUpdates" });
+            else renderUpdatesHub();
+        }
         if (page === "settings") loadEnvVars();
         if (page === "syscheck") initCheck();
         if (page === "packages" && catalog.length === 0) sendNative({ action: "getCatalog" });
@@ -476,13 +702,27 @@
             html += '<div class="card-section"><div class="card-section__title">' + esc(getCategoryLabel(cat)) + ' (' + groups[cat].length + ')</div>';
             groups[cat].forEach(function (e) {
                 var iconSvg = window.LazyEnvIcons.getIcon(e.command || e.name, e.category);
+                var upInfo = environmentUpdates.get(e.command);
+                var badgeHtml = "";
+                var updateBtnHtml = "";
+                if (upInfo) {
+                    if (upInfo.isPinned) {
+                        badgeHtml = ' <span class="badge badge--neutral">' + esc(t("updates.pinnedHint")) + '</span>';
+                    } else if (upInfo.hasUpdate) {
+                        badgeHtml = ' <span class="badge badge--update">&#8679; ' + esc(t("home.updateAvailable", upInfo.latestVersion)) + '</span>';
+                        updateBtnHtml = '<button class="btn btn--sm btn--accent btn-update" data-cmd="' + esc(e.command) + '" data-pkg="' + esc(upInfo.packageId || "") + '" data-name="' + esc(e.name) + '" data-cur="' + esc(e.version) + '" data-lat="' + esc(upInfo.latestVersion) + '">' + esc(t("home.btnUpdate")) + '</button>';
+                    } else {
+                        badgeHtml = ' <span class="badge badge--uptodate">' + esc(t("home.upToDate")) + '</span>';
+                    }
+                }
                 html += '<div class="card-row" data-cmd="' + esc(e.command) + '">' +
                     '<div class="card-row__icon">' + iconSvg + '</div>' +
                     '<div class="card-row__body">' +
-                    '<div class="card-row__title">' + esc(e.name) + '</div>' +
+                    '<div class="card-row__title">' + esc(e.name) + badgeHtml + '</div>' +
                     '<div class="card-row__subtitle">' + esc(e.version) + '</div>' +
                     '</div>' +
                     '<div class="card-row__actions">' +
+                    updateBtnHtml +
                     '<button class="btn btn--sm btn-uninstall">' + esc(t("env.btnUninstall")) + '</button>' +
                     '</div></div>';
             });
@@ -506,6 +746,38 @@
                 );
             });
         });
+
+        container.querySelectorAll(".btn-update").forEach(function (btn) {
+            btn.addEventListener("click", function (ev) {
+                ev.stopPropagation();
+                var cmd = btn.getAttribute("data-cmd");
+                var pkgId = btn.getAttribute("data-pkg");
+                var name = btn.getAttribute("data-name");
+                var latVer = btn.getAttribute("data-lat");
+
+                showDialog(
+                    t("home.confirmUpdateTitle"),
+                    t("home.confirmUpdate", name, latVer),
+                    [
+                        { text: t("dialog.cancel"), cls: "" },
+                        {
+                            text: t("home.btnUpdate"),
+                            cls: "btn--accent",
+                            action: function () {
+                                btn.disabled = true;
+                                btn.textContent = t("home.updating");
+                                sendNative({
+                                    action: "upgradeEnvironment",
+                                    command: cmd,
+                                    packageId: pkgId,
+                                    name: name
+                                });
+                            }
+                        }
+                    ]
+                );
+            });
+        });
     }
 
     document.getElementById("homeSearch").addEventListener("input", function (e) {
@@ -515,8 +787,25 @@
     document.getElementById("btnRefreshEnv").addEventListener("click", function () {
         document.getElementById("envList").innerHTML = '<div class="empty-state">' + t("env.scanning") + '</div>';
         detectedEnvironments = [];
+        environmentUpdates.clear();
         sendNative({ action: "detectEnvironments" });
     });
+
+    document.getElementById("btnCheckUpdates").addEventListener("click", function () {
+        if (isCheckingUpdates) return;
+        var btn = document.getElementById("btnCheckUpdates");
+        btn.classList.add("btn--loading");
+        btn.disabled = true;
+        var span = btn.querySelector("span");
+        if (span) span.textContent = t("home.checkingUpdates");
+        isCheckingUpdates = true;
+
+        sendNative({
+            action: "checkUpdates",
+            environments: getAllEnvironments()
+        });
+    });
+
 
     // -----------------------------------------------------------------------
     // Home: Manual Add Environment
@@ -1156,16 +1445,16 @@
                     var result = b.action();
                     if (result === false) return; // prevent close
                 }
-                overlay.classList.remove("dialog-overlay--visible");
+                overlay.classList.remove("dialog-overlay--visible", "dialog-overlay--active");
             });
             footer.appendChild(btn);
         });
 
-        overlay.classList.add("dialog-overlay--visible");
+        overlay.classList.add("dialog-overlay--visible", "dialog-overlay--active");
     }
 
     document.getElementById("dialogOverlay").addEventListener("click", function (e) {
-        if (e.target === this) this.classList.remove("dialog-overlay--visible");
+        if (e.target === this) this.classList.remove("dialog-overlay--visible", "dialog-overlay--active");
     });
 
     // -----------------------------------------------------------------------
@@ -1187,14 +1476,458 @@
     // -----------------------------------------------------------------------
     function esc(s) {
         if (!s) return "";
-        var d = document.createElement("div");
-        d.textContent = s;
-        return d.innerHTML;
+        return String(s)
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#39;");
     }
 
     // -----------------------------------------------------------------------
     // Init
     // -----------------------------------------------------------------------
-    navigateTo("home");
+
+    // -----------------------------------------------------------------------
+    // Updates Hub Logic & UI
+    // -----------------------------------------------------------------------
+    function updateSidebarBadge() {
+        var unpinnedCount = 0;
+        var counts = { all: 0, winget: 0, scoop: 0, npm: 0, pip: 0, pinned: 0 };
+
+        hubUpdates.forEach(function (u) {
+            var src = (u.source || "").toLowerCase();
+            if (u.isPinned) {
+                counts.pinned++;
+            } else {
+                unpinnedCount++;
+                counts.all++;
+                if (counts[src] !== undefined) {
+                    counts[src]++;
+                }
+            }
+        });
+
+        var badge = document.getElementById("updatesBadge");
+        if (badge) {
+            if (unpinnedCount > 0) {
+                badge.textContent = unpinnedCount;
+                badge.style.display = "inline-block";
+            } else {
+                badge.style.display = "none";
+            }
+        }
+
+        // Update Tab Badges
+        var setBadge = function (id, num) {
+            var el = document.getElementById(id);
+            if (el) el.textContent = num;
+        };
+        setBadge("tabBadgeAll", counts.all);
+        setBadge("tabBadgeWinget", counts.winget);
+        setBadge("tabBadgeScoop", counts.scoop);
+        setBadge("tabBadgeNpm", counts.npm);
+        setBadge("tabBadgePip", counts.pip);
+        setBadge("tabBadgePinned", counts.pinned);
+    }
+
+    function renderUpdatesHub(filterText) {
+        var container = document.getElementById("updatesList");
+        if (!container) return;
+
+        var items = hubUpdates.slice();
+
+        // 1. Source filter
+        if (currentHubFilter === "pinned") {
+            items = items.filter(function (it) { return it.isPinned; });
+        } else if (currentHubFilter !== "all") {
+            items = items.filter(function (it) { return it.source.toLowerCase() === currentHubFilter && !it.isPinned; });
+        } else {
+            items = items.filter(function (it) { return !it.isPinned; });
+        }
+
+        // 2. Search filter
+        if (filterText) {
+            var ft = filterText.toLowerCase();
+            items = items.filter(function (it) {
+                return it.name.toLowerCase().includes(ft) || it.id.toLowerCase().includes(ft) || it.source.toLowerCase().includes(ft);
+            });
+        }
+
+        if (items.length === 0) {
+            container.innerHTML = '<div class="empty-state">' + esc(t("updates.noUpdates")) + '</div>';
+            return;
+        }
+
+        var html = '<div class="card-section"><div class="card-section__title">' +
+                   esc(currentHubFilter.toUpperCase()) + ' (' + items.length + ')</div>';
+
+        items.forEach(function (it) {
+            var isSel = selectedHubUpdateIds.has(it.id);
+            var srcClass = "tag--" + esc(it.source.toLowerCase());
+            var iconSvg = window.LazyEnvIcons ? window.LazyEnvIcons.getIcon(it.name || it.id, "tool") : "";
+
+            html += '<div class="card-row card-row--selectable ' + (isSel ? 'card-row--selected' : '') + '" data-id="' + esc(it.id) + '">' +
+                '<div class="card-row__check"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M12.736 3.97a.733.733 0 0 1 1.047 0c.286.289.29.756.01 1.05L7.88 12.01a.733.733 0 0 1-1.065.02L3.217 8.384a.757.757 0 0 1 0-1.06.733.733 0 0 1 1.047 0l3.052 3.093 5.4-6.425a.247.247 0 0 1 .02-.022z"/></svg></div>' +
+                '<div class="card-row__icon">' + iconSvg + '</div>' +
+                '<div class="card-row__body">' +
+                '<div class="card-row__title">' + esc(it.name) + ' <span class="badge--source ' + srcClass + '">' + esc(it.source) + '</span>' +
+                (it.isPinned ? ' <span class="badge badge--neutral">' + esc(t("updates.pinnedHint")) + '</span>' : '') +
+                '</div>' +
+                '<div class="card-row__subtitle">' + esc(it.currentVersion) + ' &rarr; <span class="text-accent" style="font-weight:600">' + esc(it.latestVersion) + '</span></div>' +
+                '</div>' +
+                '<div class="card-row__actions">' +
+                '<button class="btn-pin ' + (it.isPinned ? 'btn-pin--active' : '') + '" data-id="' + esc(it.id) + '" data-pinned="' + (it.isPinned ? 'true' : 'false') + '">' +
+                (it.isPinned ? esc(t("updates.unpin")) : esc(t("updates.pin"))) + '</button>' +
+                '<button class="btn btn--sm btn--accent btn-update-single" data-id="' + esc(it.id) + '" data-name="' + esc(it.name) + '" data-src="' + esc(it.source) + '" data-lat="' + esc(it.latestVersion) + '">' +
+                esc(t("home.btnUpdate")) + '</button>' +
+                '</div></div>';
+        });
+
+        html += '</div>';
+        container.innerHTML = html;
+
+        // Selection checkbox click
+        container.querySelectorAll(".card-row--selectable").forEach(function (row) {
+            row.addEventListener("click", function (e) {
+                if (e.target.closest("button") || e.target.closest(".btn-pin")) return;
+                var id = row.getAttribute("data-id");
+                if (selectedHubUpdateIds.has(id)) {
+                    selectedHubUpdateIds.delete(id);
+                    row.classList.remove("card-row--selected");
+                } else {
+                    selectedHubUpdateIds.add(id);
+                    row.classList.add("card-row--selected");
+                }
+            });
+        });
+
+        // Pin toggle click
+        container.querySelectorAll(".btn-pin").forEach(function (btn) {
+            btn.addEventListener("click", function (e) {
+                e.stopPropagation();
+                var id = btn.getAttribute("data-id");
+                var isPinned = btn.getAttribute("data-pinned") === "true";
+                sendNative({
+                    action: "togglePinPackage",
+                    packageId: id,
+                    pinned: !isPinned
+                });
+            });
+        });
+
+        // Single upgrade click
+        container.querySelectorAll(".btn-update-single").forEach(function (btn) {
+            btn.addEventListener("click", function (e) {
+                e.stopPropagation();
+                var id = btn.getAttribute("data-id");
+                var name = btn.getAttribute("data-name");
+                var src = btn.getAttribute("data-src");
+                var latVer = btn.getAttribute("data-lat");
+
+                showDialog(
+                    t("home.confirmUpdateTitle"),
+                    t("home.confirmUpdate", name, latVer),
+                    [
+                        { text: t("dialog.cancel"), cls: "" },
+                        {
+                            text: t("home.btnUpdate"),
+                            cls: "btn--accent",
+                            action: function () {
+                                btn.disabled = true;
+                                btn.textContent = t("home.updating");
+                                var pBox = document.getElementById("batchProgressBox");
+                                if (pBox) {
+                                    pBox.style.display = "block";
+                                    pBox.scrollIntoView({ behavior: "smooth", block: "nearest" });
+                                }
+                                var pTitle = document.getElementById("batchProgressTitle");
+                                if (pTitle) pTitle.textContent = "Upgrading " + name + "...";
+                                var pCount = document.getElementById("batchProgressCount");
+                                if (pCount) pCount.textContent = "1 / 1";
+                                var pFill = document.getElementById("batchProgressFill");
+                                if (pFill) pFill.style.width = "10%";
+                                var panel = document.getElementById("batchLogPanel");
+                                if (panel) panel.innerHTML = "<div class='log-line'>[LazyEnv] Starting upgrade for " + esc(name) + "...</div>";
+                                showToast(t("updates.startingSingle", name), "info");
+                                sendNative({
+                                    action: "upgradeBatch",
+                                    targets: [{ id: id, name: name, source: src }]
+                                });
+                            }
+                        }
+                    ]
+                );
+            });
+        });
+    }
+
+    // Source Tabs binding
+    var srcTabs = document.getElementById("updatesSourceTabs");
+    if (srcTabs) {
+        srcTabs.addEventListener("click", function (e) {
+            var tab = e.target.closest(".tab");
+            if (!tab) return;
+            srcTabs.querySelectorAll(".tab").forEach(function (t) { t.classList.remove("tab--active"); });
+            tab.classList.add("tab--active");
+            currentHubFilter = tab.getAttribute("data-src") || "all";
+            renderUpdatesHub(document.getElementById("updatesSearch") ? document.getElementById("updatesSearch").value : "");
+        });
+    }
+
+    // Check all sources button
+    var btnCheckAll = document.getElementById("btnCheckAllUpdates");
+    if (btnCheckAll) {
+        btnCheckAll.addEventListener("click", function () {
+            if (isCheckingHubUpdates) return;
+            btnCheckAll.classList.add("btn--loading");
+            btnCheckAll.disabled = true;
+            var span = btnCheckAll.querySelector("span");
+            if (span) span.textContent = t("home.checkingUpdates");
+            isCheckingHubUpdates = true;
+            sendNative({ action: "getAllUpdates" });
+        });
+    }
+
+    // Update all button
+    var btnUpAll = document.getElementById("btnUpdateAllPackages");
+    if (btnUpAll) {
+        btnUpAll.addEventListener("click", function () {
+            var unpinned = hubUpdates.filter(function (it) { return !it.isPinned; });
+            if (unpinned.length === 0) {
+                showToast(t("updates.noUpdates"), "info");
+                return;
+            }
+
+            showDialog(
+                t("home.confirmUpdateTitle"),
+                t("updates.confirmBatch", unpinned.length),
+                [
+                    { text: t("dialog.cancel"), cls: "" },
+                    {
+                        text: t("updates.updateAll"),
+                        cls: "btn--accent",
+                        action: function () {
+                            var targets = unpinned.map(function (it) {
+                                return { id: it.id, name: it.name, source: it.source };
+                            });
+                            var pBox = document.getElementById("batchProgressBox");
+                            if (pBox) {
+                                pBox.style.display = "block";
+                                pBox.scrollIntoView({ behavior: "smooth", block: "nearest" });
+                            }
+                            var pTitle = document.getElementById("batchProgressTitle");
+                            if (pTitle) pTitle.textContent = t("updates.batchStarting");
+                            var pCount = document.getElementById("batchProgressCount");
+                            if (pCount) pCount.textContent = "0 / " + targets.length;
+                            var pFill = document.getElementById("batchProgressFill");
+                            if (pFill) pFill.style.width = "5%";
+                            var panel = document.getElementById("batchLogPanel");
+                            if (panel) panel.innerHTML = "<div class='log-line'>[LazyEnv] Starting batch upgrade for " + targets.length + " packages...</div>";
+                            showToast(t("updates.batchStarting"), "info");
+                            sendNative({ action: "upgradeBatch", targets: targets });
+                        }
+                    }
+                ]
+            );
+        });
+    }
+
+    // Update selected button
+    var btnUpSel = document.getElementById("btnUpdateSelected");
+    if (btnUpSel) {
+        btnUpSel.addEventListener("click", function () {
+            var selected = hubUpdates.filter(function (it) { return selectedHubUpdateIds.has(it.id); });
+            if (selected.length === 0) {
+                showToast(t("updates.selectRequired"), "info");
+                return;
+            }
+
+            showDialog(
+                t("home.confirmUpdateTitle"),
+                t("updates.confirmBatch", selected.length),
+                [
+                    { text: t("dialog.cancel"), cls: "" },
+                    {
+                        text: t("updates.updateSelected"),
+                        cls: "btn--accent",
+                        action: function () {
+                            var targets = selected.map(function (it) {
+                                return { id: it.id, name: it.name, source: it.source };
+                            });
+                            var pBox = document.getElementById("batchProgressBox");
+                            if (pBox) {
+                                pBox.style.display = "block";
+                                pBox.scrollIntoView({ behavior: "smooth", block: "nearest" });
+                            }
+                            var pTitle = document.getElementById("batchProgressTitle");
+                            if (pTitle) pTitle.textContent = t("updates.batchStarting");
+                            var pCount = document.getElementById("batchProgressCount");
+                            if (pCount) pCount.textContent = "0 / " + targets.length;
+                            var pFill = document.getElementById("batchProgressFill");
+                            if (pFill) pFill.style.width = "5%";
+                            var panel = document.getElementById("batchLogPanel");
+                            if (panel) panel.innerHTML = "<div class='log-line'>[LazyEnv] Starting batch upgrade for " + targets.length + " packages...</div>";
+                            showToast(t("updates.batchStarting"), "info");
+                            sendNative({ action: "upgradeBatch", targets: targets });
+                        }
+                    }
+                ]
+            );
+        });
+    }
+
+    var upSearch = document.getElementById("updatesSearch");
+    if (upSearch) {
+        upSearch.addEventListener("input", function (e) {
+            renderUpdatesHub(e.target.value);
+        });
+    }
+
+    
+    // -----------------------------------------------------------------------
+    // Failure Diagnostics & Rollback Handlers
+    // -----------------------------------------------------------------------
+    function renderFailureDiagnostics(summary) {
+        var box = document.getElementById("failureDiagnosticBox");
+        if (!box) return;
+        box.style.display = "block";
+        box.scrollIntoView({ behavior: "smooth", block: "nearest" });
+
+        var summaryText = document.getElementById("diagSummaryText");
+        if (summaryText) {
+            summaryText.textContent = summary.failCount + " package(s) failed during upgrade. Pre-update snapshot is ready for instant rollback.";
+        }
+
+        var list = document.getElementById("diagFailuresList");
+        if (!list) return;
+
+        var html = "";
+        summary.failures.forEach(function (f) {
+            var cat = f.category || "UNKNOWN";
+            html += '<div class="diag-item">' +
+                '<div class="diag-item__header">' +
+                '<span style="font-weight:600">' + esc(f.name || f.id) + '</span>' +
+                '<span class="diag-category-badge">' + esc(cat) + '</span>' +
+                '</div>' +
+                '<div class="diag-item__reason">' + esc(f.reason || "Installation error") + '</div>' +
+                '<div class="diag-item__sugg">&bull; ' + esc(f.suggestion || "Please check error log.") + '</div>' +
+                '</div>';
+        });
+        list.innerHTML = html;
+
+        // One-Click Rollback Button
+        var btnRollback = document.getElementById("btnOneClickRollback");
+        if (btnRollback) {
+            btnRollback.onclick = function () {
+                if (!summary.snapshotId) {
+                    showToast(t("updates.noSnapshotAvailable"), "error");
+                    return;
+                }
+                showDialog(
+                    t("diag.rollbackTitle"),
+                    t("diag.rollbackConfirm", summary.snapshotId),
+                    [
+                        { text: t("dialog.cancel"), cls: "" },
+                        {
+                            text: t("diag.rollbackTitle"),
+                            cls: "btn--danger",
+                            action: function () {
+                                sendNative({
+                                    action: "restoreSnapshot",
+                                    id: summary.snapshotId
+                                });
+                                showToast(t("diag.rollbackSuccess"), "success");
+                                box.style.display = "none";
+                                sendNative({ action: "detectEnvironments" });
+                                sendNative({ action: "getAllUpdates" });
+                            }
+                        }
+                    ]
+                );
+            };
+        }
+
+        // Retry Failed Button
+        var btnRetry = document.getElementById("btnRetryFailed");
+        if (btnRetry) {
+            btnRetry.onclick = function () {
+                var targets = summary.failures.map(function (f) {
+                    return { id: f.id, name: f.name, source: f.source };
+                });
+                box.style.display = "none";
+                var pBox = document.getElementById("batchProgressBox");
+                if (pBox) pBox.style.display = "block";
+                sendNative({
+                    action: "upgradeBatch",
+                    targets: targets,
+                    interactive: false
+                });
+            };
+        }
+
+        // Interactive Retry Button
+        var btnInteractive = document.getElementById("btnRetryInteractive");
+        if (btnInteractive) {
+            btnInteractive.onclick = function () {
+                var targets = summary.failures.map(function (f) {
+                    return { id: f.id, name: f.name, source: f.source };
+                });
+                box.style.display = "none";
+                var pBox = document.getElementById("batchProgressBox");
+                if (pBox) pBox.style.display = "block";
+                sendNative({
+                    action: "upgradeBatch",
+                    targets: targets,
+                    interactive: true
+                });
+            };
+        }
+
+        var btnCloseDiag = document.getElementById("btnCloseDiagBox");
+        if (btnCloseDiag) {
+            btnCloseDiag.onclick = function () {
+                box.style.display = "none";
+            };
+        }
+    }
+
+    // Terminal Log Actions
+    var btnToggleLog = document.getElementById("btnToggleBatchLog");
+    if (btnToggleLog) {
+        btnToggleLog.addEventListener("click", function () {
+            var panel = document.getElementById("batchLogPanel");
+            if (!panel) return;
+            if (panel.style.display === "none") {
+                panel.style.display = "block";
+                btnToggleLog.textContent = "Collapse Log";
+            } else {
+                panel.style.display = "none";
+                btnToggleLog.textContent = "Expand Log";
+            }
+        });
+    }
+
+    var btnCopyLog = document.getElementById("btnCopyBatchLog");
+    if (btnCopyLog) {
+        btnCopyLog.addEventListener("click", function () {
+            var panel = document.getElementById("batchLogPanel");
+            if (!panel) return;
+            navigator.clipboard.writeText(panel.innerText || panel.textContent).then(function () {
+                showToast(t("updates.logCopied"), "info");
+            });
+        });
+    }
+
+    var btnClearLog = document.getElementById("btnClearBatchLog");
+    if (btnClearLog) {
+        btnClearLog.addEventListener("click", function () {
+            var panel = document.getElementById("batchLogPanel");
+            if (panel) panel.innerHTML = "";
+        });
+    }
+
+        navigateTo("home");
 
 })();
+

@@ -169,18 +169,21 @@ void WebViewHost::setupMessageBridge() {
                         try {
                             std::string response = messageHandler_(msg);
                             if (!response.empty()) {
-                                // This callback runs on the UI thread, so direct
-                                // delivery is safe here.
                                 std::wstring wjson = utf8ToWide(response);
                                 webview_->PostWebMessageAsString(wjson.c_str());
                             }
+                        } catch (const std::exception& e) {
+                            try {
+                                std::string errJson = std::string("{\"action\":\"error\",\"message\":\"") + e.what() + "\"}";
+                                std::wstring werr = utf8ToWide(errJson);
+                                webview_->PostWebMessageAsString(werr.c_str());
+                            } catch (...) {}
                         } catch (...) {
-                            // Never let a C++ exception escape through the COM
-                            // boundary: it would terminate the process with an
-                            // access violation ("memory could not be read").
-                            const wchar_t* errMsg =
-                                L"{\"action\":\"error\",\"message\":\"Internal native error\"}";
-                            webview_->PostWebMessageAsString(errMsg);
+                            try {
+                                const wchar_t* errMsg =
+                                    L"{\"action\":\"error\",\"message\":\"Internal native error\"}";
+                                webview_->PostWebMessageAsString(errMsg);
+                            } catch (...) {}
                         }
                     }
                 }
@@ -223,8 +226,12 @@ void WebViewHost::processPendingMessages() {
     }
 
     while (!batch.empty()) {
-        std::wstring wjson = utf8ToWide(batch.front());
-        webview_->PostWebMessageAsString(wjson.c_str());
+        try {
+            std::wstring wjson = utf8ToWide(batch.front());
+            webview_->PostWebMessageAsString(wjson.c_str());
+        } catch (...) {
+            // Ignore delivery failure if webview is in transition
+        }
         batch.pop();
     }
 }
