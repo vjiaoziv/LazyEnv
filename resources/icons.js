@@ -58,6 +58,17 @@
 
         postgresql: '<svg viewBox="0 0 24 24" width="20" height="20"><path fill="#336791" d="M17.128 0a10.134 10.134 0 0 0-2.755.403l-.063.02A10.922 10.922 0 0 0 12.6.258C11.422.238 10.41.524 9.594 1 8.79.721 7.122.24 5.364.336 4.14.403 2.804.775 1.814 1.82.826 2.865.377 4.478.565 6.55c.052.575.155 1.166.313 1.77.314 1.2.757 2.505 1.345 3.63.588 1.127 1.305 2.062 2.2 2.606.448.272.944.4 1.44.358.34-.03.667-.14.958-.32.182.254.4.47.65.643.59.41 1.206.56 1.82.545.244-.006.484-.036.72-.084l.04-.01c.022.22.07.436.145.644.117.323.278.6.48.84l-.02.017c-.572.49-1.16.827-1.593 1.31-.434.483-.678 1.085-.592 1.88.053.487.258.9.544 1.208.286.308.648.504 1.03.622.762.236 1.63.18 2.4-.12l.003-.002c.456-.178.84-.42 1.18-.72.34-.3.62-.66.84-1.06.36-.66.54-1.44.54-2.28v-.09c.02-.27.02-.54.01-.82l.01-.01c.32-.12.6-.3.84-.52.44-.4.76-.94.96-1.56.16-.49.26-1.04.3-1.64.01-.16.02-.32.02-.49v-.06c.45-.24.84-.56 1.16-.96.52-.64.88-1.44 1.08-2.34.2-.9.24-1.88.12-2.88-.12-1-.4-2.04-.88-3.04-.48-1-.16-1.68-.76-2.26C19.96.636 18.73.08 17.128 0z"/></svg>',
 
+        blender: '<svg viewBox="0 0 24 24" width="20" height="20"><rect fill="#EA7600" width="24" height="24" rx="4"/><circle cx="12" cy="12" r="4.5" fill="#fff"/><circle cx="12" cy="12" r="2.5" fill="#225785"/></svg>',
+        capcut: '<svg viewBox="0 0 24 24" width="20" height="20"><rect fill="#111" width="24" height="24" rx="4"/><path fill="#00E5FF" d="M7 6l5 6-5 6h2l4-4.8L17 18h2l-5-6 5-6h-2l-4 4.8L9 6H7z"/></svg>',
+        edge: '<svg viewBox="0 0 24 24" width="20" height="20"><rect fill="#0078D7" width="24" height="24" rx="4"/><circle cx="12" cy="12" r="6" fill="#00D2FF"/></svg>',
+        chrome: '<svg viewBox="0 0 24 24" width="20" height="20"><rect fill="#4285F4" width="24" height="24" rx="4"/><circle cx="12" cy="12" r="5" fill="#EA4335"/><circle cx="12" cy="12" r="2.5" fill="#FBBC05"/></svg>',
+        terminal: '<svg viewBox="0 0 24 24" width="20" height="20"><rect fill="#222" width="24" height="24" rx="4"/><path fill="#4EC9B0" d="M6 8l4 4-4 4v-2l2-2-2-2V8zm6 7h6v2h-6v-2z"/></svg>',
+        wsl: '<svg viewBox="0 0 24 24" width="20" height="20"><rect fill="#E95420" width="24" height="24" rx="4"/><circle cx="12" cy="12" r="5" fill="#fff"/></svg>',
+        zotero: '<svg viewBox="0 0 24 24" width="20" height="20"><rect fill="#CC292B" width="24" height="24" rx="4"/><path fill="#fff" d="M7 7h10l-6 10h6v-2h-3l6-10H7z"/></svg>',
+        telegram: '<svg viewBox="0 0 24 24" width="20" height="20"><rect fill="#24A1DE" width="24" height="24" rx="4"/><path fill="#fff" d="M5 11.5l13-5-3 12-4-3.5-2 2v-3l7-6-8.5 5.5L5 11.5z"/></svg>',
+        wechat: '<svg viewBox="0 0 24 24" width="20" height="20"><rect fill="#07C160" width="24" height="24" rx="4"/><circle cx="10" cy="11" r="5" fill="#fff"/><circle cx="16" cy="14" r="3.5" fill="#fff"/></svg>',
+        ollama: '<svg viewBox="0 0 24 24" width="20" height="20"><rect fill="#fff" width="24" height="24" rx="4"/><circle cx="12" cy="12" r="5" fill="#111"/></svg>',
+
         redis: '<svg viewBox="0 0 24 24" width="20" height="20"><path fill="#DC382D" d="M10.5 2.661l.54.997-1.797.644 2.409.166.54.997-1.797.645 2.409.166.002.009L24 10.054 12 14.37 0 10.054l5.06-1.94 2.06-.79.002-.01 2.409.167.54.997-1.797.644 2.226.153zm1.5 9.18L24 15.522 12 19.838 0 15.522l12-3.681zm0 4.717L24 20.239 12 24.555 0 20.239l12-3.681z"/></svg>',
 
         jq: '<svg viewBox="0 0 24 24" width="20" height="20"><rect fill="#333" width="24" height="24" rx="4"/><text x="12" y="16.5" text-anchor="middle" fill="#fff" font-size="12" font-family="Consolas,monospace" font-weight="bold">jq</text></svg>',
@@ -169,6 +180,19 @@
         // Redis
         "redis.redis": "redis", "redis-server": "redis", "redis-cli": "redis", "redis": "redis",
 
+        // Popular Apps
+        "blender": "blender", "blenderfoundation.blender": "blender",
+        "capcut": "capcut", "bytedance.capcut": "capcut",
+        "edge": "edge", "microsoft.edge": "edge",
+        "chrome": "chrome", "google.chrome": "chrome",
+        "terminal": "terminal", "microsoft.windowsterminal": "terminal", "windows terminal": "terminal",
+        "wsl": "wsl", "microsoft.wsl": "wsl",
+        "zotero": "zotero", "digitalscholar.zotero": "zotero",
+        "telegram": "telegram", "telegram.telegramdesktop": "telegram",
+        "wechat": "wechat", "tencent.wechat": "wechat", "tencent.wechat.universal": "wechat",
+        "wecom": "wechat", "tencent.wecom": "wechat",
+        "ollama": "ollama", "ollama.ollama": "ollama",
+
         // Utilities
         "jqlang.jq": "jq", "jq": "jq",
         "burntsushi.ripgrep.msvc": "ripgrep", "rg": "ripgrep", "ripgrep": "ripgrep",
@@ -193,6 +217,16 @@
     // -----------------------------------------------------------------------
     // Category fallback icons (generic)
     // -----------------------------------------------------------------------
+    // -----------------------------------------------------------------------
+    // Package Manager Source SVG icons (24x24 viewBox)
+    // -----------------------------------------------------------------------
+    var SOURCE_ICONS = {
+        winget: '<svg viewBox="0 0 24 24" width="20" height="20"><rect fill="#0078D4" width="24" height="24" rx="4"/><path fill="#fff" d="M12 3.5l7 4v9l-7 4-7-4v-9l7-4zm0 2.3L6.8 8.7 12 11.6l5.2-2.9L12 5.8zm-6.2 4.1v6.2L11 19v-6.2L5.8 9.9zm12.4 0L13 12.8V19l5.2-2.9V9.9z"/></svg>',
+        scoop:  '<svg viewBox="0 0 24 24" width="20" height="20"><rect fill="#107C41" width="24" height="24" rx="4"/><path fill="#fff" d="M12 4a5 5 0 0 0-5 5c0 2.2 1.4 4.1 3.5 4.7L9 19a1 1 0 0 0 2 0l1.5-5.3A5.002 5.002 0 0 0 12 4zm0 2a3 3 0 0 1 3 3c0 1.3-.8 2.4-2 2.8V9a1 1 0 0 0-2 0v2.8A3.003 3.003 0 0 1 9 9a3 3 0 0 1 3-3z"/></svg>',
+        npm:    '<svg viewBox="0 0 24 24" width="20" height="20"><rect fill="#CB3837" width="24" height="24" rx="4"/><path fill="#fff" d="M4 8h16v8H12v-6H8v6H4V8z"/></svg>',
+        pip:    '<svg viewBox="0 0 24 24" width="20" height="20"><rect fill="#3776AB" width="24" height="24" rx="4"/><path fill="#FFD43B" d="M12 5a3 3 0 0 0-3 3v1h6V8a3 3 0 0 0-3-3zm-4 5h8v6a3 3 0 0 1-3 3h-2a3 3 0 0 1-3-3v-6z"/></svg>'
+    };
+
     var CATEGORY_ICONS = {
         language: '<svg viewBox="0 0 24 24" width="20" height="20"><rect fill="#0078D4" width="24" height="24" rx="4"/><path fill="#fff" d="M7 7h3v10H7zm4 0h3l3 6v-6h2v10h-3l-3-6v6h-2z"/></svg>',
         tool:     '<svg viewBox="0 0 24 24" width="20" height="20"><rect fill="#5C2D91" width="24" height="24" rx="4"/><path fill="#fff" d="M16.5 12.5l-3-3 1.5-1.5 4.5 4.5-4.5 4.5-1.5-1.5 3-3zm-9 0l3 3-1.5 1.5L4.5 12.5 9 8l1.5 1.5-3 3z"/></svg>',
@@ -214,24 +248,30 @@
      * @param {string} [category] - fallback category for generic icon
      * @returns {string} SVG HTML string
      */
-    function getIcon(identifier, category) {
-        if (!identifier) {
-            return CATEGORY_ICONS[category] || CATEGORY_ICONS.other;
+    function getIcon(identifier, category, source) {
+        if (identifier) {
+            var key = identifier.toLowerCase();
+
+            // Direct alias lookup
+            if (ALIASES[key] && ICONS[ALIASES[key]]) {
+                return ICONS[ALIASES[key]];
+            }
+
+            // Partial match on alias keys
+            var aliasKeys = Object.keys(ALIASES);
+            for (var i = 0; i < aliasKeys.length; i++) {
+                if (key.indexOf(aliasKeys[i]) !== -1 || aliasKeys[i].indexOf(key) !== -1) {
+                    var iconKey = ALIASES[aliasKeys[i]];
+                    if (ICONS[iconKey]) return ICONS[iconKey];
+                }
+            }
         }
 
-        var key = identifier.toLowerCase();
-
-        // Direct alias lookup
-        if (ALIASES[key] && ICONS[ALIASES[key]]) {
-            return ICONS[ALIASES[key]];
-        }
-
-        // Partial match on alias keys (e.g. "Python.Python.3.14" matches "python.python.3")
-        var aliasKeys = Object.keys(ALIASES);
-        for (var i = 0; i < aliasKeys.length; i++) {
-            if (key.indexOf(aliasKeys[i]) !== -1 || aliasKeys[i].indexOf(key) !== -1) {
-                var iconKey = ALIASES[aliasKeys[i]];
-                if (ICONS[iconKey]) return ICONS[iconKey];
+        // Source-based fallback (WinGet, Scoop, NPM, Pip)
+        if (source) {
+            var srcKey = source.toLowerCase();
+            if (SOURCE_ICONS[srcKey]) {
+                return SOURCE_ICONS[srcKey];
             }
         }
 

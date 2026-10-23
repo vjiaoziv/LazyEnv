@@ -105,6 +105,9 @@
                 hubUpdates = d.updates || [];
                 updateSidebarBadge();
                 renderUpdatesHub(document.getElementById("updatesSearch") ? document.getElementById("updatesSearch").value : "");
+                if (currentPage !== "updates" && unpinnedCount > 0) {
+                    showToast(t("updates.startupFound", unpinnedCount), "info");
+                }
                 break;
 
             case "upgradeBatchProgress":
@@ -197,6 +200,9 @@
                     });
                     updateSidebarBadge();
                     renderUpdatesHub(document.getElementById("updatesSearch") ? document.getElementById("updatesSearch").value : "");
+                if (currentPage !== "updates" && unpinnedCount > 0) {
+                    showToast(t("updates.startupFound", unpinnedCount), "info");
+                }
                 }
                 break;
 
@@ -1523,17 +1529,37 @@
             var el = document.getElementById(id);
             if (el) el.textContent = num;
         };
-        setBadge("tabBadgeAll", counts.all);
-        setBadge("tabBadgeWinget", counts.winget);
-        setBadge("tabBadgeScoop", counts.scoop);
-        setBadge("tabBadgeNpm", counts.npm);
-        setBadge("tabBadgePip", counts.pip);
-        setBadge("tabBadgePinned", counts.pinned);
+        if (isCheckingHubUpdates && hubUpdates.length === 0) {
+            setBadge("tabBadgeAll", "-");
+            setBadge("tabBadgeWinget", "-");
+            setBadge("tabBadgeScoop", "-");
+            setBadge("tabBadgeNpm", "-");
+            setBadge("tabBadgePip", "-");
+            setBadge("tabBadgePinned", "-");
+        } else {
+            setBadge("tabBadgeAll", counts.all);
+            setBadge("tabBadgeWinget", counts.winget);
+            setBadge("tabBadgeScoop", counts.scoop);
+            setBadge("tabBadgeNpm", counts.npm);
+            setBadge("tabBadgePip", counts.pip);
+            setBadge("tabBadgePinned", counts.pinned);
+        }
     }
 
     function renderUpdatesHub(filterText) {
         var container = document.getElementById("updatesList");
         if (!container) return;
+
+        // Display checking state instead of false zero
+        if (isCheckingHubUpdates && hubUpdates.length === 0) {
+            container.innerHTML = '<div class="card-box" style="text-align:center; padding:36px 16px;">' +
+                '<div class="btn__icon-spin" style="display:inline-block; margin-bottom:12px; width:28px; height:28px; color:var(--accent);">' +
+                '<svg viewBox="0 0 16 16" width="28" height="28" fill="currentColor"><path fill-rule="evenodd" d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2v1z"/><path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466z"/></svg></div>' +
+                '<div style="font-size:15px; font-weight:600; margin-bottom:6px;">' + esc(t("updates.checking")) + '</div>' +
+                '<div class="text-secondary" style="font-size:12px;">' + esc(t("updates.checkingDesc")) + '</div>' +
+                '</div>';
+            return;
+        }
 
         var items = hubUpdates.slice();
 
@@ -1565,7 +1591,7 @@
         items.forEach(function (it) {
             var isSel = selectedHubUpdateIds.has(it.id);
             var srcClass = "tag--" + esc(it.source.toLowerCase());
-            var iconSvg = window.LazyEnvIcons ? window.LazyEnvIcons.getIcon(it.name || it.id, "tool") : "";
+            var iconSvg = window.LazyEnvIcons ? window.LazyEnvIcons.getIcon(it.name || it.id, "tool", it.source) : "";
 
             html += '<div class="card-row card-row--selectable ' + (isSel ? 'card-row--selected' : '') + '" data-id="' + esc(it.id) + '">' +
                 '<div class="card-row__check"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M12.736 3.97a.733.733 0 0 1 1.047 0c.286.289.29.756.01 1.05L7.88 12.01a.733.733 0 0 1-1.065.02L3.217 8.384a.757.757 0 0 1 0-1.06.733.733 0 0 1 1.047 0l3.052 3.093 5.4-6.425a.247.247 0 0 1 .02-.022z"/></svg></div>' +
@@ -1672,6 +1698,9 @@
             tab.classList.add("tab--active");
             currentHubFilter = tab.getAttribute("data-src") || "all";
             renderUpdatesHub(document.getElementById("updatesSearch") ? document.getElementById("updatesSearch").value : "");
+                if (currentPage !== "updates" && unpinnedCount > 0) {
+                    showToast(t("updates.startupFound", unpinnedCount), "info");
+                }
         });
     }
 
@@ -1928,6 +1957,22 @@
     }
 
         navigateTo("home");
+
+    // Actively check for updates across all sources on startup
+    setTimeout(function () {
+        if (!isCheckingHubUpdates && hubUpdates.length === 0) {
+            isCheckingHubUpdates = true;
+            var btnHub = document.getElementById("btnCheckAllUpdates");
+            if (btnHub) {
+                btnHub.classList.add("btn--loading");
+                btnHub.disabled = true;
+                var s = btnHub.querySelector("span");
+                if (s) s.textContent = t("home.checkingUpdates");
+            }
+            updateSidebarBadge();
+            sendNative({ action: "getAllUpdates" });
+        }
+    }, 200);
 
 })();
 
