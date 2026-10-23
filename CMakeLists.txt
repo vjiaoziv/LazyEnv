@@ -5,7 +5,7 @@
 cmake_minimum_required(VERSION 3.24)
 
 project(LazyEnv
-    VERSION   0.8.0
+    VERSION   0.8.1
     LANGUAGES CXX
 )
 
@@ -77,7 +77,16 @@ set(SOURCES
 # ---------------------------------------------------------------------------
 # Resource file (icon + version info)
 # ---------------------------------------------------------------------------
-set(RESOURCE_FILE LazyEnv.rc)
+# --- Resource file (icon + version info) — generated from LazyEnv.rc.in ----
+# Single source of truth for the version: project(VERSION ...) above.
+string(REPLACE "." "," LAZYENV_RC_VERSION "${PROJECT_VERSION}")
+set(LAZYENV_RC_VERSION "${LAZYENV_RC_VERSION},0")
+configure_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/LazyEnv.rc.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/LazyEnv.rc"
+    @ONLY
+)
+set(RESOURCE_FILE "${CMAKE_CURRENT_BINARY_DIR}/LazyEnv.rc")
 
 # ---------------------------------------------------------------------------
 # Executable (WIN32 = no console window)
@@ -162,6 +171,11 @@ add_custom_command(TARGET LazyEnv POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "${CMAKE_CURRENT_SOURCE_DIR}/resources/icons.js"
         "$<TARGET_FILE_DIR:LazyEnv>/resources/icons.js"
+    # Stamp the display version in the copied index.html from project(VERSION)
+    COMMAND ${CMAKE_COMMAND}
+        "-DLAZYENV_VERSION=${PROJECT_VERSION}"
+        "-DINDEX_HTML=$<TARGET_FILE_DIR:LazyEnv>/resources/index.html"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/StampVersion.cmake"
     COMMENT "Copying web resources to output directory"
 )
 

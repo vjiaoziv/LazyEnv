@@ -9,6 +9,10 @@ Release/
 MinSizeRel/
 RelWithDebInfo/
 
+# Packaged release output (CI produces the authoritative release)
+LazyEnv-Release/
+*.zip
+
 # IDE files
 .vs/
 .vscode/
@@ -38,11 +42,5 @@ packages/
 Thumbs.db
 Desktop.ini
 .DS_Store
-
-# Generated icon placeholder
-resources/lazyenv.ico
-
-# cmd files
-versionmodifier.cmd
 
 reasonix.toml

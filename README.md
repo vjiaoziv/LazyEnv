@@ -3,16 +3,16 @@
 **English** | [中文](README_zh-CN.md)
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Release-v0.8.0-0078D4?style=flat-square" alt="Release" />
+  <img src="https://img.shields.io/badge/Release-v0.8.1-0078D4?style=flat-square" alt="Release" />
   <img src="https://img.shields.io/badge/Platform-Windows%2010%20%7C%2011-0078D4?style=flat-square&logo=windows" alt="Platform" />
   <img src="https://img.shields.io/badge/C%2B%2B-23-blue?style=flat-square&logo=c%2B%2B" alt="C++23" />
   <img src="https://img.shields.io/badge/UI-WebView2%20%7C%20Fluent-success?style=flat-square" alt="UI" />
-  <img src="https://img.shields.io/badge/License-MIT-green?style=flat-square" alt="License" />
+  <img src="https://img.shields.io/badge/License-GPL--3.0-green?style=flat-square" alt="License" />
 </p>
 
 **Developer-centric out-of-the-box environment manager, high-speed mirror switcher, and multi-source update hub.**
 
-Version: **0.8.0**
+Version: **0.8.1**
 
 ---
 
@@ -33,6 +33,8 @@ LazyEnv is a next-generation Windows development environment configurator and to
 ```
 
 ---
+
+> 🗺️ **Roadmap**: the phased update plan (v0.8.1 → v0.9 → v1.0) lives in [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ## Key Feature Matrix
 
@@ -105,4 +107,4 @@ Special thanks to everyone contributing to LazyEnv! Issues and Pull Requests are
 
 ## License
 
-This project is licensed under the [MIT License](LICENSE).
+This project is licensed under the [GNU General Public License v3.0](LICENSE).

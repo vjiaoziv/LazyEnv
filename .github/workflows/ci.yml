@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure
+        run: cmake -B build -A x64
+
+      - name: Build
+        run: cmake --build build --config Release --parallel
+
+      - name: Smoke check
+        shell: pwsh
+        run: |
+          $exe = "build/Release/LazyEnv.exe"
+          if (!(Test-Path $exe)) { throw "$exe not found" }
+          $res = "build/Release/resources/index.html"
+          if (!(Test-Path $res)) { throw "$res not found" }
+          $ver = (Get-Item $exe).VersionInfo.ProductVersion
+          Write-Host "LazyEnv.exe ProductVersion: $ver"
+          if ($ver -notmatch '^\d+\.\d+\.\d+\.0$') { throw "Unexpected version resource: $ver" }
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: LazyEnv-windows-x64
+          path: |
+            build/Release/LazyEnv.exe
+            build/Release/resources/
+          if-no-files-found: error

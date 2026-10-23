@@ -1,17 +1,19 @@
 // ============================================================================
-// LazyEnv - LazyEnv.rc
+// LazyEnv - LazyEnv.rc.in
 // Windows resource script: icon and version information
+// Generated at CMake configure time — DO NOT EDIT the generated LazyEnv.rc.
+// Version values come from project(LazyEnv VERSION ...) in CMakeLists.txt.
 // ============================================================================
 
 #include <winver.h>
 
 // --- Application Icon ---
-IDI_APPICON ICON "resources\\lazyenv.ico"
+IDI_APPICON ICON "@CMAKE_CURRENT_SOURCE_DIR@/resources/lazyenv.ico"
 
 // --- Version Information ---
 VS_VERSION_INFO VERSIONINFO
-    FILEVERSION    0,8,0,0
-    PRODUCTVERSION 0,8,0,0
+    FILEVERSION    @LAZYENV_RC_VERSION@
+    PRODUCTVERSION @LAZYENV_RC_VERSION@
     FILEFLAGSMASK  VS_FFI_FILEFLAGSMASK
     FILEFLAGS      0x0L
     FILEOS         VOS_NT_WINDOWS32
@@ -24,12 +26,12 @@ BEGIN
         BEGIN
             VALUE "CompanyName",      "LazyEnv Project"
             VALUE "FileDescription",  "LazyEnv - Development Environment Setup Tool"
-            VALUE "FileVersion",      "0.8.0"
+            VALUE "FileVersion",      "@PROJECT_VERSION@"
             VALUE "InternalName",     "LazyEnv"
-            VALUE "LegalCopyright",   "MIT License"
+            VALUE "LegalCopyright",   "GPL-3.0"
             VALUE "OriginalFilename", "LazyEnv.exe"
             VALUE "ProductName",      "LazyEnv"
-            VALUE "ProductVersion",   "0.8.0"
+            VALUE "ProductVersion",   "@PROJECT_VERSION@"
         END
     END
     BLOCK "VarFileInfo"

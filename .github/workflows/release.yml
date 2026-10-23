@@ -1,0 +1,61 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify tag matches project version
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}".TrimStart('v')
+          $cmake = Get-Content CMakeLists.txt -Raw
+          if ($cmake -notmatch 'VERSION\s+(\d+\.\d+\.\d+)') { throw "Cannot parse project VERSION from CMakeLists.txt" }
+          $ver = $Matches[1]
+          if ($tag -ne $ver) {
+            throw "Tag v$tag does not match CMakeLists.txt project version $ver"
+          }
+          "LAZYENV_VERSION=$ver" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Configure
+        run: cmake -B build -A x64
+
+      - name: Build
+        run: cmake --build build --config Release --parallel
+
+      - name: Package
+        shell: pwsh
+        run: |
+          $ver = $env:LAZYENV_VERSION
+          $stage = "LazyEnv-v$ver-windows-x64"
+          New-Item -ItemType Directory -Path $stage | Out-Null
+          Copy-Item build/Release/LazyEnv.exe $stage/
+          Copy-Item build/Release/resources $stage/resources -Recurse
+          Copy-Item LICENSE $stage/
+          Copy-Item README.md $stage/
+          Copy-Item README_zh-CN.md $stage/
+          Compress-Archive -Path $stage -DestinationPath "$stage.zip"
+          # sha256sum-compatible checksum list (two spaces after the hash)
+          $hash = (Get-FileHash "$stage.zip" -Algorithm SHA256).Hash.ToLower()
+          "$hash *$stage.zip" | Out-File -FilePath SHA256SUMS.txt -Encoding ascii
+          Get-Content SHA256SUMS.txt
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            *.zip
+            SHA256SUMS.txt
+          generate_release_notes: true
+          body: |
+            SHA256 checksums are published in `SHA256SUMS.txt` (verify with `sha256sum -c SHA256SUMS.txt`).
