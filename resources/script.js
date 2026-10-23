@@ -50,6 +50,7 @@
     var currentMirrorType = "npm";
     var pathDoctorReport = null;
     var isDoctorRunning = false;
+    var currentRecipeDiff = null;
     var selectedHubUpdateIds = new Set();
     var isCheckingHubUpdates = false;
     var isBatchUpgrading = false;
@@ -94,6 +95,34 @@
             case "environmentsDetected":
                 detectedEnvironments = d.environments || [];
                 renderEnvironments();
+                break;
+
+            case "exportRecipeResult":
+                if (d.success) {
+                    showToast(t("recipes.exportSuccess", d.filePath), "success");
+                } else {
+                    showToast("Failed to export environment recipe.", "error");
+                }
+                break;
+
+            case "recipeDiffReport":
+                if (d.success && d.diff) {
+                    currentRecipeDiff = d.diff;
+                    renderRecipeDiff(d.diff);
+                } else {
+                    showToast("Failed to parse or validate recipe file.", "error");
+                }
+                break;
+
+            case "deployRecipeComplete":
+                if (d.success) {
+                    showToast(t("recipes.deployComplete"), "success");
+                    var rBox = document.getElementById("recipeDiffBox");
+                    if (rBox) rBox.style.display = "none";
+                    sendNative({ action: "detectEnvironments" });
+                } else {
+                    showToast("Failed to deploy recipe environment.", "error");
+                }
                 break;
 
             case "pathDoctorReport":
@@ -527,6 +556,41 @@
         if (obj.action === "deleteEnvVar") {
             setTimeout(function () { handleNative({ action: "envVarDeleteResult", success: true }); }, 300);
         }
+        if (obj.action === "exportRecipeDialog") {
+            setTimeout(function () {
+                handleNative({ action: "exportRecipeResult", success: true, filePath: "C:\\Users\\Rein\\my-dev-stack.lazyenv" });
+            }, 500);
+        }
+        if (obj.action === "importRecipeDialog") {
+            setTimeout(function () {
+                handleNative({
+                    action: "recipeDiffReport",
+                    success: true,
+                    diff: {
+                        recipeName: "FullStack-AI-Team-Stack",
+                        recipeDesc: "Standardized development stack for Web & AI teams",
+                        author: "vjiaoziv",
+                        npmMirror: "https://registry.npmmirror.com",
+                        pipMirror: "https://pypi.tuna.tsinghua.edu.cn/simple",
+                        missingPackages: [
+                            { id: "Python.Python.3.12", name: "Python 3.12", source: "winget" },
+                            { id: "pnpm", name: "pnpm", source: "npm" }
+                        ],
+                        installedPackages: [
+                            { id: "Git.Git", name: "Git", source: "winget" },
+                            { id: "OpenJS.NodeJS.LTS", name: "Node.js (LTS)", source: "winget" }
+                        ],
+                        varsCount: 1,
+                        pathsCount: 1
+                    }
+                });
+            }, 600);
+        }
+        if (obj.action === "deployRecipe") {
+            setTimeout(function () {
+                handleNative({ action: "deployRecipeComplete", success: true, snapshotId: "snap-recipe-mock" });
+            }, 1200);
+        }
         if (obj.action === "pathDoctorDiagnose") {
             setTimeout(function () {
                 handleNative({
@@ -664,6 +728,7 @@
             else renderUpdatesHub();
         }
         if (page === "settings") { loadEnvVars(); if (!pathDoctorReport) sendNative({ action: "pathDoctorDiagnose" }); }
+        if (page === "recipes") renderFeaturedRecipes();
         if (page === "syscheck") initCheck();
         if (page === "packages" && catalog.length === 0) sendNative({ action: "getCatalog" });
         if (page === "recovery") loadSnapshots();
@@ -2299,6 +2364,255 @@
                                 cleanUser: true,
                                 cleanSystem: true
                             });
+                        }
+                    }
+                ]
+            );
+        });
+    }
+
+    
+    // -----------------------------------------------------------------------
+    // Recipes Hub Logic & UI
+    // -----------------------------------------------------------------------
+    var FEATURED_RECIPES = [
+        {
+            key: "web",
+            name: "Full-Stack Web Team",
+            desc: "Node.js LTS, pnpm, Git, VS Code with npmmirror acceleration.",
+            author: "LazyEnv Team",
+            packages: [
+                { id: "OpenJS.NodeJS.LTS", name: "Node.js (LTS)", source: "winget" },
+                { id: "pnpm", name: "pnpm", source: "npm" },
+                { id: "Git.Git", name: "Git", source: "winget" },
+                { id: "Microsoft.VisualStudioCode", name: "VS Code", source: "winget" }
+            ],
+            mirrors: { npm: "https://registry.npmmirror.com", pip: "" }
+        },
+        {
+            key: "ai",
+            name: "Python AI & Deep Learning",
+            desc: "Python 3.12, uv, pip, Git, VS Code with Tsinghua PyPI mirror.",
+            author: "LazyEnv Team",
+            packages: [
+                { id: "Python.Python.3.12", name: "Python 3.12", source: "winget" },
+                { id: "Git.Git", name: "Git", source: "winget" },
+                { id: "Microsoft.VisualStudioCode", name: "VS Code", source: "winget" },
+                { id: "jqlang.jq", name: "jq", source: "winget" }
+            ],
+            mirrors: { npm: "", pip: "https://pypi.tuna.tsinghua.edu.cn/simple" }
+        },
+        {
+            key: "systems",
+            name: "Modern C/C++ Systems",
+            desc: "LLVM/Clang, CMake, Ninja, Git, VS Code for low-level performance.",
+            author: "LazyEnv Team",
+            packages: [
+                { id: "LLVM.LLVM", name: "LLVM/Clang", source: "winget" },
+                { id: "Kitware.CMake", name: "CMake", source: "winget" },
+                { id: "Ninja-build.Ninja", name: "Ninja", source: "winget" },
+                { id: "Git.Git", name: "Git", source: "winget" }
+            ],
+            mirrors: { npm: "", pip: "" }
+        }
+    ];
+
+    function renderFeaturedRecipes() {
+        var container = document.getElementById("featuredRecipesList");
+        if (!container) return;
+
+        var html = "";
+        FEATURED_RECIPES.forEach(function (r, idx) {
+            html += '<div class="stack-card">' +
+                '<div class="stack-card__icon" style="background:rgba(96,205,255,0.15); color:var(--accent); font-weight:700;">' + (idx + 1) + '</div>' +
+                '<div class="stack-card__title">' + esc(r.name) + '</div>' +
+                '<div class="stack-card__desc">' + esc(r.desc) + '</div>' +
+                '<div class="stack-card__footer">' +
+                '<span class="badge--source tag--winget">' + esc(r.author) + '</span>' +
+                '<button class="btn btn--sm btn--accent btn-inspect-featured" data-key="' + esc(r.key) + '">Deploy</button>' +
+                '</div></div>';
+        });
+        container.innerHTML = html;
+
+        container.querySelectorAll(".btn-inspect-featured").forEach(function (btn) {
+            btn.addEventListener("click", function () {
+                var k = btn.getAttribute("data-key");
+                var item = FEATURED_RECIPES.find(function (f) { return f.key === k; });
+                if (!item) return;
+
+                // Build a diff against current installed environments
+                var installedCmds = new Set(getAllEnvironments().map(function (e) { return (e.command || "").toLowerCase(); }));
+                var missing = [];
+                var ready = [];
+
+                item.packages.forEach(function (p) {
+                    var low = (p.name || p.id).toLowerCase();
+                    var found = false;
+                    installedCmds.forEach(function (c) {
+                        if (low.includes(c)) found = true;
+                    });
+                    if (found) ready.push(p);
+                    else missing.push(p);
+                });
+
+                var diff = {
+                    recipeName: item.name,
+                    recipeDesc: item.desc,
+                    author: item.author,
+                    npmMirror: item.mirrors.npm,
+                    pipMirror: item.mirrors.pip,
+                    missingPackages: missing,
+                    installedPackages: ready,
+                    varsCount: 1,
+                    pathsCount: 1
+                };
+
+                currentRecipeDiff = diff;
+                renderRecipeDiff(diff);
+            });
+        });
+    }
+
+    function renderRecipeDiff(diff) {
+        var box = document.getElementById("recipeDiffBox");
+        if (!box) return;
+        box.style.display = "block";
+        box.scrollIntoView({ behavior: "smooth", block: "nearest" });
+
+        var elName = document.getElementById("diffRecipeName");
+        if (elName) elName.textContent = diff.recipeName || "Recipe Preflight";
+
+        var elAuthor = document.getElementById("diffRecipeAuthor");
+        if (elAuthor) elAuthor.textContent = diff.author || "Standard";
+
+        var elDesc = document.getElementById("diffRecipeDesc");
+        if (elDesc) elDesc.textContent = diff.recipeDesc || "";
+
+        var elMissing = document.getElementById("diffMissingCount");
+        if (elMissing) elMissing.textContent = diff.missingPackages ? diff.missingPackages.length : 0;
+
+        var elReady = document.getElementById("diffInstalledCount");
+        if (elReady) elReady.textContent = diff.installedPackages ? diff.installedPackages.length : 0;
+
+        var elMirrors = document.getElementById("diffMirrorsCount");
+        if (elMirrors) elMirrors.textContent = (diff.npmMirror ? 1 : 0) + (diff.pipMirror ? 1 : 0);
+
+        var elVars = document.getElementById("diffVarsCount");
+        if (elVars) elVars.textContent = (diff.varsCount || 0) + (diff.pathsCount || 0);
+
+        var list = document.getElementById("diffItemsList");
+        if (list) {
+            var html = "";
+
+            // Mirrors section
+            if (diff.npmMirror || diff.pipMirror) {
+                html += '<div class="mb-sm" style="font-size:12px; font-weight:600; color:var(--accent);">Mirrors to Apply:</div>';
+                if (diff.npmMirror) html += '<div class="conflict-path-row">&bull; [NPM] ' + esc(diff.npmMirror) + '</div>';
+                if (diff.pipMirror) html += '<div class="conflict-path-row">&bull; [Pip] ' + esc(diff.pipMirror) + '</div>';
+            }
+
+            // Missing packages (need install)
+            if (diff.missingPackages && diff.missingPackages.length > 0) {
+                html += '<div class="mt-md mb-sm" style="font-size:12px; font-weight:600; color:var(--text-primary);">' +
+                        esc(t("recipes.toInstall")) + ' (' + diff.missingPackages.length + '):</div>';
+                diff.missingPackages.forEach(function (p) {
+                    html += '<div class="diag-item flex-between" style="padding:6px 10px; margin-bottom:4px;">' +
+                        '<span>' + esc(p.name || p.id) + '</span>' +
+                        '<span class="badge--source tag--' + esc((p.source || "winget").toLowerCase()) + '">Deploy</span>' +
+                        '</div>';
+                });
+            }
+
+            // Already installed packages (skip)
+            if (diff.installedPackages && diff.installedPackages.length > 0) {
+                html += '<div class="mt-md mb-sm" style="font-size:12px; font-weight:600; color:var(--status-success);">' +
+                        esc(t("recipes.skipped")) + ' (' + diff.installedPackages.length + '):</div>';
+                diff.installedPackages.forEach(function (p) {
+                    html += '<div class="diag-item flex-between" style="padding:6px 10px; margin-bottom:4px; opacity:0.7;">' +
+                        '<span>' + esc(p.name || p.id) + '</span>' +
+                        '<span class="badge badge--uptodate">Installed</span>' +
+                        '</div>';
+                });
+            }
+
+            list.innerHTML = html;
+        }
+    }
+
+    var btnExportRec = document.getElementById("btnExportRecipe");
+    if (btnExportRec) {
+        btnExportRec.addEventListener("click", function () {
+            showDialogRaw(
+                t("recipes.exportTitle"),
+                '<div class="dialog-form">' +
+                '<div class="dialog-form__group"><label class="dialog-form__label">' + esc(t("recipes.exportName")) + '</label>' +
+                '<input type="text" class="input" id="dlgRecName" value="FullStack-Team-Stack"></div>' +
+                '<div class="dialog-form__group"><label class="dialog-form__label">' + esc(t("recipes.exportDesc")) + '</label>' +
+                '<input type="text" class="input" id="dlgRecDesc" value="Standardized development environment for team collaboration"></div>' +
+                '<div class="dialog-form__group"><label class="dialog-form__label">' + esc(t("recipes.exportAuthor")) + '</label>' +
+                '<input type="text" class="input" id="dlgRecAuthor" value="vjiaoziv"></div>' +
+                '</div>',
+                [
+                    { text: t("dialog.cancel"), cls: "" },
+                    {
+                        text: t("recipes.btnExport"),
+                        cls: "btn--accent",
+                        action: function () {
+                            var n = document.getElementById("dlgRecName").value.trim();
+                            var d = document.getElementById("dlgRecDesc").value.trim();
+                            var a = document.getElementById("dlgRecAuthor").value.trim();
+                            sendNative({
+                                action: "exportRecipeDialog",
+                                name: n,
+                                description: d,
+                                author: a,
+                                environments: getAllEnvironments()
+                            });
+                        }
+                    }
+                ]
+            );
+        });
+    }
+
+    var btnImportRec = document.getElementById("btnImportRecipe");
+    if (btnImportRec) {
+        btnImportRec.addEventListener("click", function () {
+            sendNative({ action: "importRecipeDialog" });
+        });
+    }
+
+    var btnCancelD = document.getElementById("btnCancelDiff");
+    if (btnCancelD) {
+        btnCancelD.addEventListener("click", function () {
+            var box = document.getElementById("recipeDiffBox");
+            if (box) box.style.display = "none";
+        });
+    }
+
+    var btnDeployRec = document.getElementById("btnDeployRecipe");
+    if (btnDeployRec) {
+        btnDeployRec.addEventListener("click", function () {
+            if (!currentRecipeDiff) return;
+
+            showDialog(
+                t("recipes.btnDeploy"),
+                t("updates.confirmBatch", currentRecipeDiff.missingPackages ? currentRecipeDiff.missingPackages.length : 0),
+                [
+                    { text: t("dialog.cancel"), cls: "" },
+                    {
+                        text: t("recipes.btnDeploy"),
+                        cls: "btn--accent",
+                        action: function () {
+                            var pids = (currentRecipeDiff.missingPackages || []).map(function (p) { return p.id; });
+                            sendNative({
+                                action: "deployRecipe",
+                                recipeName: currentRecipeDiff.recipeName,
+                                npmMirror: currentRecipeDiff.npmMirror || "",
+                                pipMirror: currentRecipeDiff.pipMirror || "",
+                                missingPackageIds: pids
+                            });
+                            showToast(t("recipes.deployStarting", currentRecipeDiff.recipeName), "info");
                         }
                     }
                 ]

@@ -3,7 +3,7 @@
 **English** | [中文](README_zh-CN.md)
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Release-v0.5.0-0078D4?style=flat-square" alt="Release" />
+  <img src="https://img.shields.io/badge/Release-v0.6.0-0078D4?style=flat-square" alt="Release" />
   <img src="https://img.shields.io/badge/Platform-Windows%2010%20%7C%2011-0078D4?style=flat-square&logo=windows" alt="Platform" />
   <img src="https://img.shields.io/badge/C%2B%2B-23-blue?style=flat-square&logo=c%2B%2B" alt="C++23" />
   <img src="https://img.shields.io/badge/UI-WebView2%20%7C%20Fluent-success?style=flat-square" alt="UI" />
@@ -12,7 +12,7 @@
 
 **Developer-centric out-of-the-box environment manager, high-speed mirror switcher, and multi-source update hub.**
 
-Version: **0.5.0**
+Version: **0.6.0**
 
 ---
 
@@ -63,7 +63,13 @@ Advanced diagnostics and automated governance for Windows PATH variables:
 - **Health Score Dashboard (0-100)**: Visual breakdown of Valid Entries, Dead Paths, Duplicates, and Collisions;
 - **1-Click Auto Clean with Snapshot**: Safely purges dead directories and merges duplicates with automated pre-clean snapshot protection.
 
-### 5. 🛡️ Environment Snapshot & PATH Governance
+### 5. 📦 .lazyenv Stack Recipes & Team Standardization (New in v0.6.0)
+Declarative development environment sharing for onboarding, new PCs, and team parity:
+- **Declarative Recipe Specification (`.lazyenv` JSON)**: Self-contained definition of multi-source packages (WinGet, Scoop, NPM, Pip), high-speed mirror registries, and environment variables;
+- **Smart Diff Preflight**: Compares incoming recipes against local machine state, clearly distinguishing `[Ready (Skip)]` and `[To Install]` items;
+- **1-Click Incremental Deployment**: Automatically creates a rollback snapshot, applies mirror acceleration, deploys missing tools, and injects PATH variables seamlessly.
+
+### 6. 🛡️ Environment Snapshot & PATH Governance
 - Automatically creates environment snapshots before any mutating operation;
 - Native registry editor for user/system variables and segmented PATH;
 - Immediately broadcasts `WM_SETTINGCHANGE` across the Windows subsystem.

@@ -3,7 +3,7 @@
 [English](README.md) | **中文**
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Release-v0.5.0-0078D4?style=flat-square" alt="Release" />
+  <img src="https://img.shields.io/badge/Release-v0.6.0-0078D4?style=flat-square" alt="Release" />
   <img src="https://img.shields.io/badge/Platform-Windows%2010%20%7C%2011-0078D4?style=flat-square&logo=windows" alt="Platform" />
   <img src="https://img.shields.io/badge/C%2B%2B-23-blue?style=flat-square&logo=c%2B%2B" alt="C++23" />
   <img src="https://img.shields.io/badge/UI-WebView2%20%7C%20Fluent-success?style=flat-square" alt="UI" />
@@ -12,7 +12,7 @@
 
 **专为开发者打造的开箱即用开发环境管家、极速换源与多源更新中心。**
 
-版本: **0.5.0**
+版本: **0.6.0**
 
 ---
 
@@ -64,7 +64,13 @@ LazyEnv 是一款针对 Windows 平台深度定制的现代化开发环境配置
 - **健康评分仪表板 (0~100)**：直观展现有效路径、失效死链、重复项与冲突项；
 - **一键智能无损清理**：自动创建前置快照，秒级安全剔除所有物理死链与重复项，并即时广播 `WM_SETTINGCHANGE` 令全局生效。
 
-### 5. 🛡️ 环境变量快照回滚与零污染治理
+### 5. 📦 .lazyenv 开发栈配方与团队标准化 (全新上线)
+针对团队协作、入职新电脑、环境同步等场景，提供标准声明式配方导入/导出体系：
+- **声明式配方格式 (`.lazyenv` JSON 规范)**：自包含全套多源软件包清单 (WinGet / Scoop / NPM / Pip)、国内镜像加速源、关键环境变量与 PATH；
+- **智能差分预检 (Preflight & Diff)**：导入配方时自动与本机当前已安装环境对比，自动识别 `[已就绪跳过]` 与 `[待安装软件]`，指标清晰，避免重复安装；
+- **一键增量安全部署**：部署前强制自动创建环境快照，先切换国内镜像加速，再并发部署缺失软件并注入环境变量，新机器一键达到开箱即用状态。
+
+### 6. 🛡️ 环境变量快照回滚与零污染治理
 - 任何安装、更新或变更前**强制自动创建系统环境快照**；
 - 原生支持 Windows 用户级与系统级注册表环境变量查看与编辑；
 - 提供可视化的分段式 PATH 变量编辑器，保存后即时广播 `WM_SETTINGCHANGE` 消息使变动全局生效。
@@ -81,6 +87,7 @@ LazyEnv/
 |-- package_manager.cpp/h    // IPackageManager 抽象引擎 (WinGet, Scoop, NPM, Pip)
 |-- update_manager.cpp/h     // 更新中心调度器、并发查询、失败诊断规则库
 |-- path_doctor.cpp/h        // PATH Doctor 环境变量健康体检与冲突诊断引擎
+|-- recipe_manager.cpp/h     // .lazyenv 声明式环境配方引擎、差分核验与团队标准化部署
 |-- rollback.cpp/h           // 环境变量快照与回滚引擎
 |-- resources/
 |   |-- index.html           // Fluent UI 页面布局 (场景推荐卡片、更新中心看板等)
