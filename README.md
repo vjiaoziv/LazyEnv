@@ -3,7 +3,7 @@
 **English** | [中文](README_zh-CN.md)
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Release-v0.4.0-0078D4?style=flat-square" alt="Release" />
+  <img src="https://img.shields.io/badge/Release-v0.5.0-0078D4?style=flat-square" alt="Release" />
   <img src="https://img.shields.io/badge/Platform-Windows%2010%20%7C%2011-0078D4?style=flat-square&logo=windows" alt="Platform" />
   <img src="https://img.shields.io/badge/C%2B%2B-23-blue?style=flat-square&logo=c%2B%2B" alt="C++23" />
   <img src="https://img.shields.io/badge/UI-WebView2%20%7C%20Fluent-success?style=flat-square" alt="UI" />
@@ -12,7 +12,7 @@
 
 **Developer-centric out-of-the-box environment manager, high-speed mirror switcher, and multi-source update hub.**
 
-Version: **0.4.0**
+Version: **0.5.0**
 
 ---
 
@@ -56,7 +56,14 @@ Eliminates download timeouts by instantly switching package registries to high-s
 - **Two-Layer Detailed Progress Dashboard**: Macro queue bar + micro task stage recognition (Preparing / Downloading / Verifying / Installing / Completed) + live console drawer;
 - **Intelligent Diagnostics & One-Click Rollback**: Classifies errors (0x80070005 elevation, 0x80070020 process locked) with pre-update snapshot restoration.
 
-### 4. 🛡️ Environment Snapshot & PATH Governance
+### 4. 🩺 PATH Doctor Environment Health Inspector (New in v0.5.0)
+Advanced diagnostics and automated governance for Windows PATH variables:
+- **Comprehensive Dual-Layer Audit**: Expands `%USERPROFILE%` macros across User & System registry PATHs to verify physical directory existence;
+- **Command Shadowing & Collision Detection**: Scans for multi-version conflicts across Python, Node, Git, Java, C++, Rust, explicitly identifying which binary is actively executed and which is shadowed;
+- **Health Score Dashboard (0-100)**: Visual breakdown of Valid Entries, Dead Paths, Duplicates, and Collisions;
+- **1-Click Auto Clean with Snapshot**: Safely purges dead directories and merges duplicates with automated pre-clean snapshot protection.
+
+### 5. 🛡️ Environment Snapshot & PATH Governance
 - Automatically creates environment snapshots before any mutating operation;
 - Native registry editor for user/system variables and segmented PATH;
 - Immediately broadcasts `WM_SETTINGCHANGE` across the Windows subsystem.

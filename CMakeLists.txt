@@ -5,7 +5,7 @@
 cmake_minimum_required(VERSION 3.24)
 
 project(LazyEnv
-    VERSION   0.4.0
+    VERSION   0.5.0
     LANGUAGES CXX
 )
 
@@ -68,6 +68,8 @@ set(SOURCES
     package_manager.h
     update_manager.cpp
     update_manager.h
+    path_doctor.cpp
+    path_doctor.h
 )
 
 # ---------------------------------------------------------------------------

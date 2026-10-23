@@ -3,7 +3,7 @@
 [English](README.md) | **中文**
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Release-v0.4.0-0078D4?style=flat-square" alt="Release" />
+  <img src="https://img.shields.io/badge/Release-v0.5.0-0078D4?style=flat-square" alt="Release" />
   <img src="https://img.shields.io/badge/Platform-Windows%2010%20%7C%2011-0078D4?style=flat-square&logo=windows" alt="Platform" />
   <img src="https://img.shields.io/badge/C%2B%2B-23-blue?style=flat-square&logo=c%2B%2B" alt="C++23" />
   <img src="https://img.shields.io/badge/UI-WebView2%20%7C%20Fluent-success?style=flat-square" alt="UI" />
@@ -12,7 +12,7 @@
 
 **专为开发者打造的开箱即用开发环境管家、极速换源与多源更新中心。**
 
-版本: **0.4.0**
+版本: **0.5.0**
 
 ---
 
@@ -57,7 +57,14 @@ LazyEnv 是一款针对 Windows 平台深度定制的现代化开发环境配置
 - **智能失败诊断与一键安全回滚**：自动识别权限不足 (0x80070005) 与文件占用 (0x80070020)，失败提供针对性建议与绑定前置快照的【一键回滚】。
 - **版本锁定 (Pin)**：对特定版本支持一键锁定，忽略更新并不再角标打扰。
 
-### 4. 🛡️ 环境变量快照回滚与 PATH 治理
+### 4. 🩺 PATH Doctor 环境变量健康诊断器 (全新上线)
+针对 Windows 长期开发导致的 PATH 臃肿死链与命令冲突痛点，提供专业级体检中心：
+- **全量双层体检**：深入 Windows 注册表，自动展开 `%USERPROFILE%` 等宏变量，严格审计用户与系统 PATH 的物理存在性与规范性；
+- **命令遮蔽与版本冲突诊断 (Command Shadowing)**：精准检测 Python、Node、Git、Java、C++、Rust 等主流工具的多版本共存状态，明确标出当前 Windows 实际优先调用的是哪个路径、哪些路径被意外遮蔽；
+- **健康评分仪表板 (0~100)**：直观展现有效路径、失效死链、重复项与冲突项；
+- **一键智能无损清理**：自动创建前置快照，秒级安全剔除所有物理死链与重复项，并即时广播 `WM_SETTINGCHANGE` 令全局生效。
+
+### 5. 🛡️ 环境变量快照回滚与零污染治理
 - 任何安装、更新或变更前**强制自动创建系统环境快照**；
 - 原生支持 Windows 用户级与系统级注册表环境变量查看与编辑；
 - 提供可视化的分段式 PATH 变量编辑器，保存后即时广播 `WM_SETTINGCHANGE` 消息使变动全局生效。
@@ -73,6 +80,7 @@ LazyEnv/
 |-- installer.cpp/h          // 原生命令执行管道、进程互斥安全锁与 UTF-8 编码自适应
 |-- package_manager.cpp/h    // IPackageManager 抽象引擎 (WinGet, Scoop, NPM, Pip)
 |-- update_manager.cpp/h     // 更新中心调度器、并发查询、失败诊断规则库
+|-- path_doctor.cpp/h        // PATH Doctor 环境变量健康体检与冲突诊断引擎
 |-- rollback.cpp/h           // 环境变量快照与回滚引擎
 |-- resources/
 |   |-- index.html           // Fluent UI 页面布局 (场景推荐卡片、更新中心看板等)

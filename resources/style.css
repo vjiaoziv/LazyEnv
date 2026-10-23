@@ -1155,3 +1155,110 @@ textarea.input {
 .mirror-option input[type="radio"] {
     accent-color: var(--accent);
 }
+
+/* ============================================================================
+   PATH Doctor Styles
+   ============================================================================ */
+
+.health-score-badge {
+    width: 44px;
+    height: 44px;
+    border-radius: var(--radius-md);
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--text-primary);
+    font-size: 18px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 2px solid var(--border-strong);
+    flex-shrink: 0;
+}
+
+.health-score-badge--perfect {
+    background: rgba(108, 203, 95, 0.15);
+    color: var(--status-success);
+    border-color: var(--status-success);
+}
+
+.health-score-badge--warning {
+    background: rgba(252, 225, 0, 0.15);
+    color: var(--status-warning);
+    border-color: var(--status-warning);
+}
+
+.health-score-badge--danger {
+    background: rgba(255, 153, 164, 0.15);
+    color: var(--status-error);
+    border-color: var(--status-error);
+}
+
+.doctor-metrics-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+    margin-top: 14px;
+}
+
+.metric-mini-card {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    padding: 10px 12px;
+    text-align: center;
+}
+
+.metric-mini-card__label {
+    font-size: 11px;
+    color: var(--text-secondary);
+    margin-bottom: 2px;
+}
+
+.metric-mini-card__value {
+    font-size: 18px;
+    font-weight: 700;
+}
+
+.conflict-card {
+    background: rgba(96, 205, 255, 0.05);
+    border: 1px solid rgba(96, 205, 255, 0.25);
+    border-radius: var(--radius-sm);
+    padding: 10px 14px;
+    margin-bottom: 8px;
+}
+
+.conflict-card__title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--accent);
+    margin-bottom: 4px;
+}
+
+.conflict-path-row {
+    font-size: 12px;
+    margin-top: 2px;
+    font-family: var(--font-mono);
+    word-break: break-all;
+}
+
+.doc-dead-item {
+    font-size: 12px;
+    font-family: var(--font-mono);
+    color: var(--status-error);
+    background: rgba(255, 153, 164, 0.06);
+    padding: 6px 10px;
+    border-radius: 4px;
+    margin-bottom: 6px;
+    word-break: break-all;
+}
+
+.doc-dup-item {
+    font-size: 12px;
+    font-family: var(--font-mono);
+    color: var(--status-warning);
+    background: rgba(252, 225, 0, 0.06);
+    padding: 6px 10px;
+    border-radius: 4px;
+    margin-bottom: 6px;
+    word-break: break-all;
+}

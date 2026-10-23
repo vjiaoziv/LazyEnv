@@ -24,6 +24,7 @@
 #include "rollback.h"
 #include "package_manager.h"
 #include "update_manager.h"
+#include "path_doctor.h"
 
 #include <Windows.h>
 #include <windowsx.h>
@@ -539,6 +540,83 @@ std::string handleWebMessage(const std::string& message) {
             } catch (...) {}
         }).detach();
         return "{\"action\":\"verifyStarted\"}";
+    }
+
+    // ------ PATH Doctor: Run full environment diagnostic ------
+    if (action == "pathDoctorDiagnose") {
+        std::thread([]() {
+            try {
+                auto rep = lazyenv::PathDoctor::diagnose();
+                std::ostringstream os;
+                os << "{\"action\":\"pathDoctorReport\",\"report\":{"
+                   << "\"healthScore\":" << rep.healthScore << ","
+                   << "\"totalEntries\":" << rep.totalEntries << ","
+                   << "\"validEntries\":" << rep.validEntries << ","
+                   << "\"deadEntries\":" << rep.deadEntries << ","
+                   << "\"duplicateEntries\":" << rep.duplicateEntries << ","
+                   << "\"userEntries\":[";
+                for (size_t i = 0; i < rep.userEntries.size(); ++i) {
+                    const auto& e = rep.userEntries[i];
+                    os << "{\"rawPath\":\"" << jsonEscape(e.rawPath) << "\","
+                       << "\"expandedPath\":\"" << jsonEscape(e.expandedPath) << "\","
+                       << "\"exists\":" << (e.exists ? "true" : "false") << ","
+                       << "\"isDuplicate\":" << (e.isDuplicate ? "true" : "false") << ","
+                       << "\"issue\":\"" << jsonEscape(e.issueDescription) << "\"}";
+                    if (i + 1 < rep.userEntries.size()) os << ",";
+                }
+                os << "],\"systemEntries\":[";
+                for (size_t i = 0; i < rep.systemEntries.size(); ++i) {
+                    const auto& e = rep.systemEntries[i];
+                    os << "{\"rawPath\":\"" << jsonEscape(e.rawPath) << "\","
+                       << "\"expandedPath\":\"" << jsonEscape(e.expandedPath) << "\","
+                       << "\"exists\":" << (e.exists ? "true" : "false") << ","
+                       << "\"isDuplicate\":" << (e.isDuplicate ? "true" : "false") << ","
+                       << "\"issue\":\"" << jsonEscape(e.issueDescription) << "\"}";
+                    if (i + 1 < rep.systemEntries.size()) os << ",";
+                }
+                os << "],\"conflicts\":[";
+                for (size_t i = 0; i < rep.conflicts.size(); ++i) {
+                    const auto& c = rep.conflicts[i];
+                    os << "{\"command\":\"" << jsonEscape(c.command) << "\","
+                       << "\"activePath\":\"" << jsonEscape(c.activePath) << "\","
+                       << "\"shadowedPath\":\"" << jsonEscape(c.shadowedPath) << "\","
+                       << "\"activeSource\":\"" << jsonEscape(c.activeSource) << "\","
+                       << "\"shadowedSource\":\"" << jsonEscape(c.shadowedSource) << "\"}";
+                    if (i + 1 < rep.conflicts.size()) os << ",";
+                }
+                os << "]}}";
+                g_webview.postMessage(os.str());
+            } catch (const std::exception& e) {
+                std::string err = std::format("{{\"action\":\"error\",\"message\":\"PATH Doctor failed: {}\"}}", jsonEscape(e.what()));
+                g_webview.postMessage(err);
+            } catch (...) {
+                g_webview.postMessage("{\"action\":\"error\",\"message\":\"PATH Doctor failed (unknown error)\"}");
+            }
+        }).detach();
+        return "{\"action\":\"pathDoctorDiagnoseStarted\"}";
+    }
+
+    // ------ PATH Doctor: Auto clean dead & duplicate entries ------
+    if (action == "pathDoctorAutoClean") {
+        std::string cuStr = extractJsonValue(message, "cleanUser");
+        std::string csStr = extractJsonValue(message, "cleanSystem");
+        bool cleanUser   = (cuStr != "false");
+        bool cleanSystem = (csStr != "false");
+
+        std::thread([cleanUser, cleanSystem]() {
+            try {
+                std::string snapId;
+                bool ok = lazyenv::PathDoctor::autoClean(cleanUser, cleanSystem, g_rollback, snapId);
+                std::ostringstream os;
+                os << "{\"action\":\"pathDoctorCleanResult\","
+                   << "\"success\":" << (ok ? "true" : "false") << ","
+                   << "\"snapshotId\":\"" << jsonEscape(snapId) << "\"}";
+                g_webview.postMessage(os.str());
+            } catch (...) {
+                g_webview.postMessage("{\"action\":\"pathDoctorCleanResult\",\"success\":false,\"snapshotId\":\"\"}");
+            }
+        }).detach();
+        return "{\"action\":\"pathDoctorAutoCleanStarted\"}";
     }
 
     // ------ Mirror Accelerator: Get current registry URL ------

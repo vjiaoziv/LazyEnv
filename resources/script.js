@@ -48,6 +48,8 @@
     var hubUpdates = [];
     var currentHubFilter = "all";
     var currentMirrorType = "npm";
+    var pathDoctorReport = null;
+    var isDoctorRunning = false;
     var selectedHubUpdateIds = new Set();
     var isCheckingHubUpdates = false;
     var isBatchUpgrading = false;
@@ -92,6 +94,31 @@
             case "environmentsDetected":
                 detectedEnvironments = d.environments || [];
                 renderEnvironments();
+                break;
+
+            case "pathDoctorReport":
+                isDoctorRunning = false;
+                var btnDoc = document.getElementById("btnRunDoctor");
+                if (btnDoc) {
+                    btnDoc.classList.remove("btn--loading");
+                    btnDoc.disabled = false;
+                    var s = btnDoc.querySelector("span");
+                    if (s) s.textContent = t("doctor.btnRun");
+                }
+                pathDoctorReport = d.report || null;
+                if (pathDoctorReport) {
+                    renderDoctorReport(pathDoctorReport);
+                }
+                break;
+
+            case "pathDoctorCleanResult":
+                if (d.success) {
+                    showToast(t("doctor.cleanSuccess", (pathDoctorReport ? pathDoctorReport.deadEntries + pathDoctorReport.duplicateEntries : 0)), "success");
+                    loadEnvVars();
+                    sendNative({ action: "pathDoctorDiagnose" });
+                } else {
+                    showToast("Failed to clean PATH variables.", "error");
+                }
                 break;
 
             case "mirrorSourceInfo":
@@ -496,6 +523,36 @@
         if (obj.action === "deleteEnvVar") {
             setTimeout(function () { handleNative({ action: "envVarDeleteResult", success: true }); }, 300);
         }
+        if (obj.action === "pathDoctorDiagnose") {
+            setTimeout(function () {
+                handleNative({
+                    action: "pathDoctorReport",
+                    report: {
+                        healthScore: 78,
+                        totalEntries: 24,
+                        validEntries: 18,
+                        deadEntries: 3,
+                        duplicateEntries: 2,
+                        userEntries: [
+                            { rawPath: "C:\\Users\\Rein\\old_python", expandedPath: "C:\\Users\\Rein\\old_python", exists: false, isDuplicate: false, issue: "Dead path" },
+                            { rawPath: "C:\\Users\\Rein\\.cargo\\bin", expandedPath: "C:\\Users\\Rein\\.cargo\\bin", exists: true, isDuplicate: false, issue: "" }
+                        ],
+                        systemEntries: [
+                            { rawPath: "C:\\Program Files\\Git\\cmd", expandedPath: "C:\\Program Files\\Git\\cmd", exists: true, isDuplicate: false, issue: "" },
+                            { rawPath: "C:\\Program Files\\Git\\cmd", expandedPath: "C:\\Program Files\\Git\\cmd", exists: true, isDuplicate: true, issue: "Duplicate path" }
+                        ],
+                        conflicts: [
+                            { command: "python.exe", activePath: "C:\\Python312\\python.exe", shadowedPath: "C:\\Python310\\python.exe", activeSource: "user", shadowedSource: "system" }
+                        ]
+                    }
+                });
+            }, 600);
+        }
+        if (obj.action === "pathDoctorAutoClean") {
+            setTimeout(function () {
+                handleNative({ action: "pathDoctorCleanResult", success: true, snapshotId: "mock-snap-doctor" });
+            }, 600);
+        }
         if (obj.action === "getMirrorSource") {
             setTimeout(function () {
                 handleNative({
@@ -602,7 +659,7 @@
             if (hubUpdates.length === 0) sendNative({ action: "getAllUpdates" });
             else renderUpdatesHub();
         }
-        if (page === "settings") loadEnvVars();
+        if (page === "settings") { loadEnvVars(); if (!pathDoctorReport) sendNative({ action: "pathDoctorDiagnose" }); }
         if (page === "syscheck") initCheck();
         if (page === "packages" && catalog.length === 0) sendNative({ action: "getCatalog" });
         if (page === "recovery") loadSnapshots();
@@ -2091,6 +2148,143 @@
             showToast("Presets selected! Click 'Start Installation' to proceed.", "info");
         });
     });
+
+    
+    // -----------------------------------------------------------------------
+    // PATH Doctor Logic & UI
+    // -----------------------------------------------------------------------
+    function renderDoctorReport(rep) {
+        var badge = document.getElementById("doctorScoreBadge");
+        var statusText = document.getElementById("doctorStatusText");
+        var metricsGrid = document.getElementById("doctorMetricsGrid");
+        var btnClean = document.getElementById("btnAutoCleanPath");
+        var drawer = document.getElementById("doctorDetailsDrawer");
+        var list = document.getElementById("doctorIssuesList");
+
+        if (metricsGrid) metricsGrid.style.display = "grid";
+        var elValid = document.getElementById("docValidCount");
+        if (elValid) elValid.textContent = rep.validEntries;
+        var elDead = document.getElementById("docDeadCount");
+        if (elDead) elDead.textContent = rep.deadEntries;
+        var elDup = document.getElementById("docDupCount");
+        if (elDup) elDup.textContent = rep.duplicateEntries;
+        var elConf = document.getElementById("docConflictCount");
+        if (elConf) elConf.textContent = rep.conflicts ? rep.conflicts.length : 0;
+
+        if (badge) {
+            badge.textContent = rep.healthScore;
+            badge.className = "health-score-badge";
+            if (rep.healthScore >= 90) {
+                badge.classList.add("health-score-badge--perfect");
+                if (statusText) statusText.textContent = t("doctor.statusHealthy");
+            } else if (rep.healthScore >= 70) {
+                badge.classList.add("health-score-badge--warning");
+                if (statusText) statusText.textContent = t("doctor.statusWarning");
+            } else {
+                badge.classList.add("health-score-badge--danger");
+                if (statusText) statusText.textContent = t("doctor.statusDanger");
+            }
+        }
+
+        if (btnClean) {
+            if (rep.deadEntries > 0 || rep.duplicateEntries > 0) {
+                btnClean.style.display = "inline-flex";
+            } else {
+                btnClean.style.display = "none";
+            }
+        }
+
+        var hasIssues = (rep.deadEntries > 0 || rep.duplicateEntries > 0 || (rep.conflicts && rep.conflicts.length > 0));
+        if (drawer && list) {
+            if (!hasIssues) {
+                drawer.style.display = "none";
+                list.innerHTML = "";
+                return;
+            }
+
+            drawer.style.display = "block";
+            var html = "";
+
+            // 1. Conflicts
+            if (rep.conflicts && rep.conflicts.length > 0) {
+                html += '<div class="mb-sm" style="font-weight:600; font-size:13px; color:var(--accent);">' +
+                        esc(t("doctor.conflictsTitle")) + ' (' + rep.conflicts.length + ')</div>';
+                rep.conflicts.forEach(function (c) {
+                    html += '<div class="conflict-card">' +
+                        '<div class="conflict-card__title">Collision: ' + esc(c.command) + '</div>' +
+                        '<div class="conflict-path-row text-success"><span style="font-weight:600">' + esc(t("doctor.active")) + '</span> (' + esc(c.activeSource) + ') ' + esc(c.activePath) + '</div>' +
+                        '<div class="conflict-path-row text-secondary"><span style="font-weight:600">' + esc(t("doctor.shadowed")) + '</span> (' + esc(c.shadowedSource) + ') ' + esc(c.shadowedPath) + '</div>' +
+                        '</div>';
+                });
+            }
+
+            // 2. Dead paths
+            var deads = [];
+            (rep.userEntries || []).concat(rep.systemEntries || []).forEach(function (e) {
+                if (!e.exists) deads.push(e);
+            });
+            if (deads.length > 0) {
+                html += '<div class="mt-md mb-sm" style="font-weight:600; font-size:13px; color:var(--status-error);">' +
+                        esc(t("doctor.deadTitle")) + ' (' + deads.length + ')</div>';
+                deads.forEach(function (d) {
+                    html += '<div class="doc-dead-item">' + (d.isSystem ? '[System] ' : '[User] ') + esc(d.rawPath) + '</div>';
+                });
+            }
+
+            // 3. Duplicate paths
+            var dups = [];
+            (rep.userEntries || []).concat(rep.systemEntries || []).forEach(function (e) {
+                if (e.isDuplicate) dups.push(e);
+            });
+            if (dups.length > 0) {
+                html += '<div class="mt-md mb-sm" style="font-weight:600; font-size:13px; color:var(--status-warning);">' +
+                        esc(t("doctor.dupTitle")) + ' (' + dups.length + ')</div>';
+                dups.forEach(function (d) {
+                    html += '<div class="doc-dup-item">' + (d.isSystem ? '[System] ' : '[User] ') + esc(d.rawPath) + '</div>';
+                });
+            }
+
+            list.innerHTML = html;
+        }
+    }
+
+    var btnRunDoc = document.getElementById("btnRunDoctor");
+    if (btnRunDoc) {
+        btnRunDoc.addEventListener("click", function () {
+            if (isDoctorRunning) return;
+            btnRunDoc.classList.add("btn--loading");
+            btnRunDoc.disabled = true;
+            var s = btnRunDoc.querySelector("span");
+            if (s) s.textContent = t("doctor.btnRunning");
+            isDoctorRunning = true;
+            sendNative({ action: "pathDoctorDiagnose" });
+        });
+    }
+
+    var btnCleanDoc = document.getElementById("btnAutoCleanPath");
+    if (btnCleanDoc) {
+        btnCleanDoc.addEventListener("click", function () {
+            if (!pathDoctorReport) return;
+            showDialog(
+                t("doctor.confirmCleanTitle"),
+                t("doctor.confirmClean", pathDoctorReport.deadEntries, pathDoctorReport.duplicateEntries),
+                [
+                    { text: t("dialog.cancel"), cls: "" },
+                    {
+                        text: t("doctor.btnAutoClean"),
+                        cls: "btn--accent",
+                        action: function () {
+                            sendNative({
+                                action: "pathDoctorAutoClean",
+                                cleanUser: true,
+                                cleanSystem: true
+                            });
+                        }
+                    }
+                ]
+            );
+        });
+    }
 
         navigateTo("home");
 
