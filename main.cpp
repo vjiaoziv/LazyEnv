@@ -605,18 +605,39 @@ std::string handleWebMessage(const std::string& message) {
 
         std::thread([cleanUser, cleanSystem]() {
             try {
-                std::string snapId;
-                bool ok = lazyenv::PathDoctor::autoClean(cleanUser, cleanSystem, g_rollback, snapId);
+                auto res = lazyenv::PathDoctor::autoClean(cleanUser, cleanSystem, g_rollback);
                 std::ostringstream os;
                 os << "{\"action\":\"pathDoctorCleanResult\","
-                   << "\"success\":" << (ok ? "true" : "false") << ","
-                   << "\"snapshotId\":\"" << jsonEscape(snapId) << "\"}";
+                   << "\"success\":" << (res.success ? "true" : "false") << ","
+                   << "\"userCleaned\":" << (res.userCleaned ? "true" : "false") << ","
+                   << "\"systemCleaned\":" << (res.systemCleaned ? "true" : "false") << ","
+                   << "\"systemRequiresElevation\":" << (res.systemRequiresElevation ? "true" : "false") << ","
+                   << "\"snapshotId\":\"" << jsonEscape(res.snapshotId) << "\"}";
                 g_webview.postMessage(os.str());
             } catch (...) {
-                g_webview.postMessage("{\"action\":\"pathDoctorCleanResult\",\"success\":false,\"snapshotId\":\"\"}");
+                g_webview.postMessage("{\"action\":\"pathDoctorCleanResult\",\"success\":false,\"userCleaned\":false,\"systemCleaned\":false,\"systemRequiresElevation\":false,\"snapshotId\":\"\"}");
             }
         }).detach();
         return "{\"action\":\"pathDoctorAutoCleanStarted\"}";
+    }
+
+    // ------ Relaunch LazyEnv as Administrator (UAC elevation) ------
+    if (action == "relaunchAsAdmin") {
+        wchar_t exePath[MAX_PATH];
+        GetModuleFileNameW(nullptr, exePath, MAX_PATH);
+
+        SHELLEXECUTEINFOW sei{};
+        sei.cbSize       = sizeof(sei);
+        sei.lpVerb       = L"runas";
+        sei.lpFile       = exePath;
+        sei.hwnd         = g_mainWindow;
+        sei.nShow        = SW_SHOWNORMAL;
+
+        if (ShellExecuteExW(&sei)) {
+            PostMessageW(g_mainWindow, WM_CLOSE, 0, 0);
+            return "{\"action\":\"relaunchSuccess\"}";
+        }
+        return "{\"action\":\"relaunchFailed\"}";
     }
 
     // ------ Mirror Accelerator: Get current registry URL ------

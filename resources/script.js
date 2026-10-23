@@ -113,7 +113,11 @@
 
             case "pathDoctorCleanResult":
                 if (d.success) {
-                    showToast(t("doctor.cleanSuccess", (pathDoctorReport ? pathDoctorReport.deadEntries + pathDoctorReport.duplicateEntries : 0)), "success");
+                    if (d.systemRequiresElevation && !d.systemCleaned) {
+                        showToast(t("doctor.partialCleanSuccess"), "warning");
+                    } else {
+                        showToast(t("doctor.cleanSuccess", (pathDoctorReport ? pathDoctorReport.deadEntries + pathDoctorReport.duplicateEntries : 0)), "success");
+                    }
                     loadEnvVars();
                     sendNative({ action: "pathDoctorDiagnose" });
                 } else {
@@ -2244,7 +2248,23 @@
                 });
             }
 
+            // Check if any system entry has dead paths
+            var hasSystemDead = (rep.systemEntries || []).some(function (e) { return !e.exists; });
+            if (hasSystemDead) {
+                html += '<div class="elevation-notice-box" style="margin-top:14px; display:flex; align-items:center; justify-content:space-between; background:rgba(252,225,0,0.08); border:1px solid rgba(252,225,0,0.3); padding:10px 14px; border-radius:var(--radius-sm);">' +
+                    '<span style="font-size:12px; color:var(--text-primary);">&#9888; ' + esc(t("doctor.elevationBanner")) + '</span>' +
+                    '<button class="btn btn--sm btn--accent" id="btnRelaunchAdmin">' + esc(t("doctor.btnRelaunchAdmin")) + '</button>' +
+                    '</div>';
+            }
+
             list.innerHTML = html;
+
+            var btnAdmin = document.getElementById("btnRelaunchAdmin");
+            if (btnAdmin) {
+                btnAdmin.addEventListener("click", function () {
+                    sendNative({ action: "relaunchAsAdmin" });
+                });
+            }
         }
     }
 

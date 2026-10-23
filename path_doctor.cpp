@@ -94,6 +94,22 @@ std::vector<std::string> splitPath(const std::string& raw) {
 
 } // anonymous namespace
 
+bool PathDoctor::isProcessElevated() {
+    BOOL fRet = FALSE;
+    HANDLE hToken = NULL;
+    if (OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &hToken)) {
+        TOKEN_ELEVATION Elevation;
+        DWORD cbSize = sizeof(TOKEN_ELEVATION);
+        if (GetTokenInformation(hToken, TokenElevation, &Elevation, sizeof(Elevation), &cbSize)) {
+            fRet = Elevation.TokenIsElevated;
+        }
+    }
+    if (hToken) {
+        CloseHandle(hToken);
+    }
+    return fRet != FALSE;
+}
+
 PathDoctorReport PathDoctor::diagnose() {
     PathDoctorReport report;
 
@@ -107,7 +123,6 @@ PathDoctorReport PathDoctor::diagnose() {
 
     std::unordered_set<std::string> seenNormalizedPaths;
 
-    // Helper to process entries
     auto processList = [&](const std::vector<std::string>& tokens, bool isSys, std::vector<PathEntryDiagnostic>& outList) {
         for (const auto& raw : tokens) {
             PathEntryDiagnostic diag;
@@ -137,14 +152,13 @@ PathDoctorReport PathDoctor::diagnose() {
     processList(userTokens, false, report.userEntries);
     processList(sysTokens, true, report.systemEntries);
 
-    // Command Shadowing & Collision detection across effective search hierarchy
+    // Command Shadowing & Collision detection
     static const std::vector<std::string> kToolsToCheck = {
         "python.exe", "python3.exe", "node.exe", "git.exe", "cargo.exe", "rustc.exe",
         "go.exe", "java.exe", "javac.exe", "cmake.exe", "ninja.exe", "gcc.exe",
         "g++.exe", "clang.exe", "cl.exe", "docker.exe", "npm.cmd", "pnpm.cmd", "pip.exe"
     };
 
-    // Construct ordered list of active valid directories
     struct DirRef {
         std::string dir;
         bool isSys;
@@ -173,7 +187,6 @@ PathDoctorReport PathDoctor::diagnose() {
                     activeDir   = fullCandidate;
                     activeIsSys = d.isSys;
                 } else if (normalizePath(fullCandidate) != normalizePath(activeDir)) {
-                    // Collision / Shadowing detected
                     CommandConflictItem conflict;
                     conflict.command         = tool;
                     conflict.activePath      = activeDir;
@@ -186,11 +199,12 @@ PathDoctorReport PathDoctor::diagnose() {
         }
     }
 
-    // Calculate Health Score (0 - 100)
+    // Calculate Health Score smoothly (0 - 100)
     int score = 100;
-    score -= (report.deadEntries * 10);
-    score -= (report.duplicateEntries * 5);
-    score -= (static_cast<int>(report.conflicts.size()) * 8);
+    score -= (std::min)(40, report.deadEntries * 5);
+    score -= (std::min)(20, report.duplicateEntries * 2);
+    score -= (std::min)(20, static_cast<int>(report.conflicts.size()) * 4);
+    if (score < 10 && (report.validEntries > 0)) score = 15;
     if (score < 0) score = 0;
     if (score > 100) score = 100;
 
@@ -198,12 +212,14 @@ PathDoctorReport PathDoctor::diagnose() {
     return report;
 }
 
-bool PathDoctor::autoClean(bool cleanUser, bool cleanSystem, RollbackManager& rollback, std::string& snapshotId) {
+AutoCleanResult PathDoctor::autoClean(bool cleanUser, bool cleanSystem, RollbackManager& rollback) {
+    AutoCleanResult result;
+
     // 1. Mandatory snapshot protection before modifying PATH
     try {
-        snapshotId = rollback.createSnapshot("PATH Doctor: Auto-clean dead & duplicate entries");
+        result.snapshotId = rollback.createSnapshot("PATH Doctor: Auto-clean dead & duplicate entries");
     } catch (...) {
-        snapshotId = "";
+        result.snapshotId = "";
     }
 
     auto cleanScope = [](bool isSys) -> bool {
@@ -227,17 +243,30 @@ bool PathDoctor::autoClean(bool cleanUser, bool cleanSystem, RollbackManager& ro
         return RollbackManager::writeEnvVariable("Path", newPath, REG_EXPAND_SZ, isSys);
     };
 
-    bool okUser = true;
-    bool okSys  = true;
+    if (cleanUser) {
+        result.userCleaned = cleanScope(false);
+    }
 
-    if (cleanUser)   okUser = cleanScope(false);
-    if (cleanSystem) okSys  = cleanScope(true);
+    if (cleanSystem) {
+        if (!isProcessElevated()) {
+            result.systemRequiresElevation = true;
+            result.systemCleaned = false;
+        } else {
+            result.systemCleaned = cleanScope(true);
+            if (!result.systemCleaned) {
+                result.systemRequiresElevation = true;
+            }
+        }
+    }
 
-    if (okUser || okSys) {
+    // Success if user scope was successfully cleaned
+    result.success = result.userCleaned || (cleanSystem && result.systemCleaned);
+
+    if (result.userCleaned || result.systemCleaned) {
         RollbackManager::broadcastEnvironmentChange();
     }
 
-    return okUser && okSys;
+    return result;
 }
 
 } // namespace lazyenv

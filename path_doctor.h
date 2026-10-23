@@ -48,13 +48,25 @@ struct PathDoctorReport {
     std::vector<CommandConflictItem> conflicts;
 };
 
+// Result of auto-clean execution
+struct AutoCleanResult {
+    bool        success                 = false;
+    bool        userCleaned             = false;
+    bool        systemCleaned           = false;
+    bool        systemRequiresElevation = false;
+    std::string snapshotId;
+};
+
 class PathDoctor {
 public:
+    // Check if current process has elevated administrator token
+    static bool isProcessElevated();
+
     // Run full non-destructive diagnostic on User and System PATH
     static PathDoctorReport diagnose();
 
-    // Auto-clean dead & duplicate entries with pre-clean snapshot protection
-    static bool autoClean(bool cleanUser, bool cleanSystem, RollbackManager& rollback, std::string& snapshotId);
+    // Auto-clean dead & duplicate entries with pre-clean snapshot protection and graceful UAC elevation fallback
+    static AutoCleanResult autoClean(bool cleanUser, bool cleanSystem, RollbackManager& rollback);
 };
 
 } // namespace lazyenv
