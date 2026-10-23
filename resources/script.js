@@ -47,6 +47,7 @@
     var environmentUpdates = new Map();
     var hubUpdates = [];
     var currentHubFilter = "all";
+    var lastDoctorScore = null;
     var currentMirrorType = "npm";
     var pathDoctorReport = null;
     var isDoctorRunning = false;
@@ -722,10 +723,14 @@
             item.classList.toggle("sidebar__item--active", item.dataset.page === page);
         });
 
-        if (page === "home") sendNative({ action: "detectEnvironments" });
+        if (page === "home") {
+            sendNative({ action: "detectEnvironments" });
+            renderHomeMetrics();
+        }
         if (page === "updates") {
             if (hubUpdates.length === 0) sendNative({ action: "getAllUpdates" });
             else renderUpdatesHub();
+            renderHomeMetrics();
         }
         if (page === "settings") { loadEnvVars(); if (!pathDoctorReport) sendNative({ action: "pathDoctorDiagnose" }); }
         if (page === "recipes") renderFeaturedRecipes();
@@ -2221,31 +2226,53 @@
         );
     }
 
-    var STACK_PRESETS = {
-        web: ["OpenJS.NodeJS.LTS", "Git.Git", "Microsoft.VisualStudioCode"],
-        python: ["Python.Python.3.12", "Git.Git", "Microsoft.VisualStudioCode", "jqlang.jq"],
-        cpp: ["LLVM.LLVM", "Kitware.CMake", "Ninja-build.Ninja", "Git.Git", "Microsoft.VisualStudioCode"],
-        rust: ["Rustlang.Rustup", "Git.Git", "Microsoft.VisualStudioCode"],
-        mobile: ["Oracle.JDK.21", "OpenJS.NodeJS.LTS", "Git.Git", "Microsoft.VisualStudioCode"]
-    };
+    function renderHomeMetrics() {
+        var elEnvs = document.getElementById("homeMetricEnvs");
+        var elUpdates = document.getElementById("homeMetricUpdates");
+        var elDoctor = document.getElementById("homeMetricDoctor");
 
-    document.querySelectorAll(".btn-configure-stack").forEach(function (btn) {
-        btn.addEventListener("click", function () {
-            var stackKey = btn.getAttribute("data-stack");
-            var pkgIds = STACK_PRESETS[stackKey];
-            if (!pkgIds) return;
+        var totalEnvs = detectedEnvironments.length + manualEnvironments.length;
+        if (elEnvs) {
+            elEnvs.textContent = totalEnvs + " " + (currentLanguage === "zh-CN" ? "项" : "tools");
+        }
 
-            selectedPackages.clear();
-            pkgIds.forEach(function (id) { selectedPackages.add(id); });
+        if (elUpdates) {
+            if (isCheckingHubUpdates) {
+                elUpdates.textContent = t("home.checkingUpdates");
+            } else if (hubUpdates.length > 0) {
+                elUpdates.textContent = hubUpdates.length + " " + (currentLanguage === "zh-CN" ? "项可用" : "available");
+            } else {
+                elUpdates.textContent = t("home.upToDate");
+            }
+        }
 
-            navigateTo("packages");
-            renderCatalog();
-            updateSelectedCount();
-            showToast(t("toast.presetsSelected"), "info");
+        if (elDoctor) {
+            if (lastDoctorScore !== null) {
+                elDoctor.textContent = lastDoctorScore + " " + (currentLanguage === "zh-CN" ? "分" : "pts");
+            } else {
+                elDoctor.textContent = "--";
+            }
+        }
+    }
+
+    var cardUp = document.getElementById("cardHomeUpdates");
+    if (cardUp) {
+        cardUp.addEventListener("click", function () { navigateTo("updates"); });
+    }
+
+    var cardDoc = document.getElementById("cardHomeDoctor");
+    if (cardDoc) {
+        cardDoc.addEventListener("click", function () {
+            navigateTo("settings");
+            sendNative({ action: "inspectPathDoctor" });
         });
-    });
+    }
 
-    
+    var cardRec = document.getElementById("cardHomeRecipes");
+    if (cardRec) {
+        cardRec.addEventListener("click", function () { navigateTo("recipes"); });
+    }
+
     // -----------------------------------------------------------------------
     // PATH Doctor Logic & UI
     // -----------------------------------------------------------------------
@@ -2409,39 +2436,107 @@
                 name: t("featured.webName"),
                 desc: t("featured.webDesc"),
                 author: "LazyEnv",
+                icon: "🌐",
+                tags: ["Node.js", "pnpm", "Git", "VS Code"],
                 packages: [
                     { id: "OpenJS.NodeJS.LTS", name: "Node.js (LTS)", source: "winget" },
                     { id: "pnpm", name: "pnpm", source: "npm" },
                     { id: "Git.Git", name: "Git", source: "winget" },
                     { id: "Microsoft.VisualStudioCode", name: "VS Code", source: "winget" }
                 ],
-                mirrors: { npm: "https://registry.npmmirror.com", pip: "" }
+                mirrors: { npm: "https://registry.npmmirror.com", pip: "" },
+                envVars: [
+                    { name: "NODE_ENV", value: "development" }
+                ]
             },
             {
                 key: "ai",
                 name: t("featured.aiName"),
                 desc: t("featured.aiDesc"),
                 author: "LazyEnv",
+                icon: "🐍",
+                tags: ["Python 3.12", "pip", "Git", "VS Code", "jq"],
                 packages: [
                     { id: "Python.Python.3.12", name: "Python 3.12", source: "winget" },
                     { id: "Git.Git", name: "Git", source: "winget" },
                     { id: "Microsoft.VisualStudioCode", name: "VS Code", source: "winget" },
                     { id: "jqlang.jq", name: "jq", source: "winget" }
                 ],
-                mirrors: { npm: "", pip: "https://pypi.tuna.tsinghua.edu.cn/simple" }
+                mirrors: { npm: "", pip: "https://pypi.tuna.tsinghua.edu.cn/simple" },
+                envVars: [
+                    { name: "PYTHONUTF8", value: "1" }
+                ]
             },
             {
                 key: "systems",
                 name: t("featured.systemsName"),
                 desc: t("featured.systemsDesc"),
                 author: "LazyEnv",
+                icon: "⚙️",
+                tags: ["LLVM/Clang", "CMake", "Ninja", "Git", "VS Code"],
                 packages: [
                     { id: "LLVM.LLVM", name: "LLVM/Clang", source: "winget" },
                     { id: "Kitware.CMake", name: "CMake", source: "winget" },
                     { id: "Ninja-build.Ninja", name: "Ninja", source: "winget" },
-                    { id: "Git.Git", name: "Git", source: "winget" }
+                    { id: "Git.Git", name: "Git", source: "winget" },
+                    { id: "Microsoft.VisualStudioCode", name: "VS Code", source: "winget" }
                 ],
-                mirrors: { npm: "", pip: "" }
+                mirrors: { npm: "", pip: "" },
+                envVars: [
+                    { name: "CC", value: "clang" },
+                    { name: "CXX", value: "clang++" }
+                ]
+            },
+            {
+                key: "rust",
+                name: t("featured.rustName"),
+                desc: t("featured.rustDesc"),
+                author: "LazyEnv",
+                icon: "🦀",
+                tags: ["Rust (rustup)", "Cargo", "Git", "VS Code"],
+                packages: [
+                    { id: "Rustlang.Rustup", name: "Rust (rustup)", source: "winget" },
+                    { id: "Git.Git", name: "Git", source: "winget" },
+                    { id: "Microsoft.VisualStudioCode", name: "VS Code", source: "winget" }
+                ],
+                mirrors: { npm: "", pip: "" },
+                envVars: [
+                    { name: "RUSTUP_DIST_SERVER", value: "https://rsproxy.cn" }
+                ]
+            },
+            {
+                key: "mobile",
+                name: t("featured.mobileName"),
+                desc: t("featured.mobileDesc"),
+                author: "LazyEnv",
+                icon: "📱",
+                tags: ["Java JDK 21", "Node.js LTS", "Git", "VS Code"],
+                packages: [
+                    { id: "Oracle.JDK.21", name: "Java JDK 21", source: "winget" },
+                    { id: "OpenJS.NodeJS.LTS", name: "Node.js (LTS)", source: "winget" },
+                    { id: "Git.Git", name: "Git", source: "winget" },
+                    { id: "Microsoft.VisualStudioCode", name: "VS Code", source: "winget" }
+                ],
+                mirrors: { npm: "https://registry.npmmirror.com", pip: "" },
+                envVars: [
+                    { name: "JAVA_HOME", value: "%ProgramFiles%\\Java\\jdk-21" }
+                ]
+            },
+            {
+                key: "toolkit",
+                name: t("featured.toolkitName"),
+                desc: t("featured.toolkitDesc"),
+                author: "LazyEnv",
+                icon: "🧰",
+                tags: ["Git", "VS Code", "7-Zip", "Windows Terminal"],
+                packages: [
+                    { id: "Git.Git", name: "Git", source: "winget" },
+                    { id: "Microsoft.VisualStudioCode", name: "VS Code", source: "winget" },
+                    { id: "7zip.7zip", name: "7-Zip", source: "winget" },
+                    { id: "Microsoft.WindowsTerminal", name: "Windows Terminal", source: "winget" }
+                ],
+                mirrors: { npm: "", pip: "" },
+                envVars: []
             }
         ];
     }
@@ -2452,13 +2547,22 @@
 
         var html = "";
         getFeaturedRecipes().forEach(function (r, idx) {
+            var tagsHtml = "";
+            if (r.tags) {
+                tagsHtml = '<div class="stack-card__tags mb-sm" style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px;">' +
+                    r.tags.map(function(tg) { return '<span class="badge--source tag--winget" style="font-size:10px;padding:2px 6px;">' + esc(tg) + '</span>'; }).join('') +
+                    '</div>';
+            }
             html += '<div class="stack-card">' +
-                '<div class="stack-card__icon" style="background:rgba(96,205,255,0.15); color:var(--accent); font-weight:700;">' + (idx + 1) + '</div>' +
-                '<div class="stack-card__title">' + esc(r.name) + '</div>' +
-                '<div class="stack-card__desc">' + esc(r.desc) + '</div>' +
-                '<div class="stack-card__footer">' +
+                '<div class="flex-between">' +
+                '<div class="stack-card__icon" style="background:rgba(96,205,255,0.15); color:var(--accent); font-weight:700;font-size:16px;">' + (r.icon || (idx + 1)) + '</div>' +
                 '<span class="badge--source tag--winget">' + esc(r.author) + '</span>' +
-                '<button class="btn btn--sm btn--accent btn-inspect-featured" data-key="' + esc(r.key) + '">Deploy</button>' +
+                '</div>' +
+                '<div class="stack-card__title" style="margin-top:8px;">' + esc(r.name) + '</div>' +
+                '<div class="stack-card__desc">' + esc(r.desc) + '</div>' +
+                tagsHtml +
+                '<div class="stack-card__footer" style="margin-top:10px;">' +
+                '<button class="btn btn--sm btn--accent btn-inspect-featured" data-key="' + esc(r.key) + '" style="width:100%" data-i18n="common.deploy">' + t("common.deploy") + '</button>' +
                 '</div></div>';
         });
         container.innerHTML = html;
@@ -2650,6 +2754,7 @@
     }
 
         navigateTo("home");
+    renderHomeMetrics();
 
     // Actively check for updates across all sources on startup
     setTimeout(function () {
