@@ -101,7 +101,7 @@
                 if (d.success) {
                     showToast(t("recipes.exportSuccess", d.filePath), "success");
                 } else {
-                    showToast("Failed to export environment recipe.", "error");
+                    showToast(t("toast.recipeExportFailed"), "error");
                 }
                 break;
 
@@ -110,7 +110,7 @@
                     currentRecipeDiff = d.diff;
                     renderRecipeDiff(d.diff);
                 } else {
-                    showToast("Failed to parse or validate recipe file.", "error");
+                    showToast(t("toast.recipeImportFailed"), "error");
                 }
                 break;
 
@@ -121,7 +121,7 @@
                     if (rBox) rBox.style.display = "none";
                     sendNative({ action: "detectEnvironments" });
                 } else {
-                    showToast("Failed to deploy recipe environment.", "error");
+                    showToast(t("toast.recipeDeployFailed"), "error");
                 }
                 break;
 
@@ -150,7 +150,7 @@
                     loadEnvVars();
                     sendNative({ action: "pathDoctorDiagnose" });
                 } else {
-                    showToast("Failed to clean PATH variables.", "error");
+                    showToast(t("toast.cleanPathFailed"), "error");
                 }
                 break;
 
@@ -162,7 +162,7 @@
                 if (d.success) {
                     showToast(t("mirror.success", (d.type || "").toUpperCase(), d.url), "success");
                 } else {
-                    showToast("Failed to set mirror registry.", "error");
+                    showToast(t("toast.mirrorSetFailed"), "error");
                 }
                 break;
 
@@ -307,7 +307,7 @@
 
             case "verifyResult":
                 showDialog(
-                    "Command Verification: " + d.command,
+                    t("toast.verifyTitle", d.command),
                     "<div class='log-panel' style='max-height:160px; font-size:13px; font-family:var(--font-mono);'>" + esc(d.output || "No output returned") + "</div>",
                     [{ text: t("dialog.ok"), cls: "btn--accent" }]
                 );
@@ -472,7 +472,7 @@
                     found: true,
                     name: obj.command,
                     command: obj.command,
-                    version: obj.command + " 0.4.0 (mock)",
+                    version: obj.command + " 0.6.1 (mock)",
                     category: obj.category || "other"
                 });
             }, 600);
@@ -756,23 +756,48 @@
     // Language switcher
     // -----------------------------------------------------------------------
     var langSelect = document.getElementById("langSelect");
-    langSelect.value = window.LazyEnvI18n.getLocale();
+
+    // Auto-detect system language and restore saved preference
+    var savedLang = localStorage.getItem("lazyenv_lang");
+    if (!savedLang) {
+        var sysLang = (navigator.language || navigator.userLanguage || "en").toLowerCase();
+        savedLang = (sysLang.startsWith("zh")) ? "zh-CN" : "en";
+    }
+    if (savedLang) {
+        langSelect.value = savedLang;
+        window.LazyEnvI18n.setLocale(savedLang);
+    }
 
     langSelect.addEventListener("change", function () {
-        window.LazyEnvI18n.setLocale(langSelect.value);
+        var chosen = langSelect.value;
+        localStorage.setItem("lazyenv_lang", chosen);
+        window.LazyEnvI18n.setLocale(chosen);
     });
 
     window.addEventListener("lazyenv:localeChanged", function () {
         t = window.LazyEnvI18n.t;
-        renderEnvironments(document.getElementById("homeSearch").value);
+        renderEnvironments(document.getElementById("homeSearch") ? document.getElementById("homeSearch").value : "");
+        if (currentPage === "updates") {
+            renderUpdatesHub(document.getElementById("updatesSearch") ? document.getElementById("updatesSearch").value : "");
+            if (lastBatchSummary && lastBatchSummary.failCount > 0) {
+                renderFailureDiagnostics(lastBatchSummary);
+            }
+        }
+        if (currentPage === "recipes") {
+            renderFeaturedRecipes();
+            if (currentRecipeDiff) renderRecipeDiff(currentRecipeDiff);
+        }
+        if (currentPage === "settings") {
+            renderEnvVarTable();
+            if (pathDoctorReport) renderDoctorReport(pathDoctorReport);
+        }
         if (currentPage === "syscheck") renderChecks();
-        if (catalog.length > 0) renderCatalog(document.getElementById("pkgSearch").value);
+        if (catalog.length > 0) renderCatalog(document.getElementById("pkgSearch") ? document.getElementById("pkgSearch").value : "");
         updatePkgCount();
         if (installResults.size > 0) {
             renderInstallList();
             updateProgressBar();
         }
-        if (currentPage === "settings") renderEnvVarTable();
         if (currentPage === "recovery") loadSnapshots();
         if (currentPage === "summary") renderSummary();
     });
@@ -2002,7 +2027,7 @@
 
         var summaryText = document.getElementById("diagSummaryText");
         if (summaryText) {
-            summaryText.textContent = summary.failCount + " package(s) failed during upgrade. Pre-update snapshot is ready for instant rollback.";
+            summaryText.textContent = t("diag.summary", summary.failCount);
         }
 
         var list = document.getElementById("diagFailuresList");
@@ -2011,13 +2036,15 @@
         var html = "";
         summary.failures.forEach(function (f) {
             var cat = f.category || "UNKNOWN";
+            var reasonText = t("diag.reason." + cat, f.exitCode) || f.reason || "Installation error";
+            var suggText = t("diag.sugg." + cat) || f.suggestion || "Please check error log.";
             html += '<div class="diag-item">' +
                 '<div class="diag-item__header">' +
                 '<span style="font-weight:600">' + esc(f.name || f.id) + '</span>' +
                 '<span class="diag-category-badge">' + esc(cat) + '</span>' +
                 '</div>' +
-                '<div class="diag-item__reason">' + esc(f.reason || "Installation error") + '</div>' +
-                '<div class="diag-item__sugg">&bull; ' + esc(f.suggestion || "Please check error log.") + '</div>' +
+                '<div class="diag-item__reason">' + esc(reasonText) + '</div>' +
+                '<div class="diag-item__sugg">&bull; ' + esc(suggText) + '</div>' +
                 '</div>';
         });
         list.innerHTML = html;
@@ -2106,10 +2133,10 @@
             if (!panel) return;
             if (panel.style.display === "none") {
                 panel.style.display = "block";
-                btnToggleLog.textContent = "Collapse Log";
+                btnToggleLog.textContent = t("common.collapseLog");
             } else {
                 panel.style.display = "none";
-                btnToggleLog.textContent = "Expand Log";
+                btnToggleLog.textContent = t("common.expandLog");
             }
         });
     }
@@ -2214,7 +2241,7 @@
             navigateTo("packages");
             renderCatalog();
             updateSelectedCount();
-            showToast("Presets selected! Click 'Start Installation' to proceed.", "info");
+            showToast(t("toast.presetsSelected"), "info");
         });
     });
 
@@ -2375,54 +2402,56 @@
     // -----------------------------------------------------------------------
     // Recipes Hub Logic & UI
     // -----------------------------------------------------------------------
-    var FEATURED_RECIPES = [
-        {
-            key: "web",
-            name: "Full-Stack Web Team",
-            desc: "Node.js LTS, pnpm, Git, VS Code with npmmirror acceleration.",
-            author: "LazyEnv Team",
-            packages: [
-                { id: "OpenJS.NodeJS.LTS", name: "Node.js (LTS)", source: "winget" },
-                { id: "pnpm", name: "pnpm", source: "npm" },
-                { id: "Git.Git", name: "Git", source: "winget" },
-                { id: "Microsoft.VisualStudioCode", name: "VS Code", source: "winget" }
-            ],
-            mirrors: { npm: "https://registry.npmmirror.com", pip: "" }
-        },
-        {
-            key: "ai",
-            name: "Python AI & Deep Learning",
-            desc: "Python 3.12, uv, pip, Git, VS Code with Tsinghua PyPI mirror.",
-            author: "LazyEnv Team",
-            packages: [
-                { id: "Python.Python.3.12", name: "Python 3.12", source: "winget" },
-                { id: "Git.Git", name: "Git", source: "winget" },
-                { id: "Microsoft.VisualStudioCode", name: "VS Code", source: "winget" },
-                { id: "jqlang.jq", name: "jq", source: "winget" }
-            ],
-            mirrors: { npm: "", pip: "https://pypi.tuna.tsinghua.edu.cn/simple" }
-        },
-        {
-            key: "systems",
-            name: "Modern C/C++ Systems",
-            desc: "LLVM/Clang, CMake, Ninja, Git, VS Code for low-level performance.",
-            author: "LazyEnv Team",
-            packages: [
-                { id: "LLVM.LLVM", name: "LLVM/Clang", source: "winget" },
-                { id: "Kitware.CMake", name: "CMake", source: "winget" },
-                { id: "Ninja-build.Ninja", name: "Ninja", source: "winget" },
-                { id: "Git.Git", name: "Git", source: "winget" }
-            ],
-            mirrors: { npm: "", pip: "" }
-        }
-    ];
+    function getFeaturedRecipes() {
+        return [
+            {
+                key: "web",
+                name: t("featured.webName"),
+                desc: t("featured.webDesc"),
+                author: "LazyEnv",
+                packages: [
+                    { id: "OpenJS.NodeJS.LTS", name: "Node.js (LTS)", source: "winget" },
+                    { id: "pnpm", name: "pnpm", source: "npm" },
+                    { id: "Git.Git", name: "Git", source: "winget" },
+                    { id: "Microsoft.VisualStudioCode", name: "VS Code", source: "winget" }
+                ],
+                mirrors: { npm: "https://registry.npmmirror.com", pip: "" }
+            },
+            {
+                key: "ai",
+                name: t("featured.aiName"),
+                desc: t("featured.aiDesc"),
+                author: "LazyEnv",
+                packages: [
+                    { id: "Python.Python.3.12", name: "Python 3.12", source: "winget" },
+                    { id: "Git.Git", name: "Git", source: "winget" },
+                    { id: "Microsoft.VisualStudioCode", name: "VS Code", source: "winget" },
+                    { id: "jqlang.jq", name: "jq", source: "winget" }
+                ],
+                mirrors: { npm: "", pip: "https://pypi.tuna.tsinghua.edu.cn/simple" }
+            },
+            {
+                key: "systems",
+                name: t("featured.systemsName"),
+                desc: t("featured.systemsDesc"),
+                author: "LazyEnv",
+                packages: [
+                    { id: "LLVM.LLVM", name: "LLVM/Clang", source: "winget" },
+                    { id: "Kitware.CMake", name: "CMake", source: "winget" },
+                    { id: "Ninja-build.Ninja", name: "Ninja", source: "winget" },
+                    { id: "Git.Git", name: "Git", source: "winget" }
+                ],
+                mirrors: { npm: "", pip: "" }
+            }
+        ];
+    }
 
     function renderFeaturedRecipes() {
         var container = document.getElementById("featuredRecipesList");
         if (!container) return;
 
         var html = "";
-        FEATURED_RECIPES.forEach(function (r, idx) {
+        getFeaturedRecipes().forEach(function (r, idx) {
             html += '<div class="stack-card">' +
                 '<div class="stack-card__icon" style="background:rgba(96,205,255,0.15); color:var(--accent); font-weight:700;">' + (idx + 1) + '</div>' +
                 '<div class="stack-card__title">' + esc(r.name) + '</div>' +
@@ -2437,7 +2466,7 @@
         container.querySelectorAll(".btn-inspect-featured").forEach(function (btn) {
             btn.addEventListener("click", function () {
                 var k = btn.getAttribute("data-key");
-                var item = FEATURED_RECIPES.find(function (f) { return f.key === k; });
+                var item = getFeaturedRecipes().find(function (f) { return f.key === k; });
                 if (!item) return;
 
                 // Build a diff against current installed environments
