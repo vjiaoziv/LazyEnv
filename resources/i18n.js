@@ -615,6 +615,16 @@
             "syscheck.devMode.desc": "Windows Developer Mode. When enabled, allows creating symbolic links without requiring Administrator elevation.",
             "syscheck.privilege.desc": "Current process privilege level. Standard user can edit user PATH; Administrator required for system-level edits.",
             "syscheck.storage.desc": "Free disk space on system drive (C:). Installing toolchains and compilers requires adequate available storage.",
+            // Multi-Version Switcher & Alias Hijack
+            "doctor.btnSetActive":              "Set as Active",
+            "doctor.aliasHijackBadge":          "WindowsApps 0KB Alias Hijack",
+            "doctor.aliasHijackWarning":        "WindowsApps 0KB alias precedes your real Python in PATH, hijacking CLI invocations.",
+            "doctor.btnFixAlias":               "Prioritize Real Python",
+            "doctor.switchSuccess":             "Successfully switched {0} to active version, related environment variables updated!",
+            "doctor.switchFailed":              "Failed to switch version. Please check path permissions.",
+            "home.switchVersion":               "Switch Version",
+            "home.confirmSwitchTitle":          "Switch Active Version",
+            "home.confirmSwitchDesc":           "Are you sure you want to switch active {0} version to {1}? PATH and related environment variables will be updated automatically.",
 "lang.label":                       "Language"
         },
 
@@ -1203,6 +1213,16 @@
             "syscheck.devMode.desc": "Windows 开发者模式。开启后普通用户权限即可直接创建文件符号链接（Symlinks），避免软链接因权限不足而失败。",
             "syscheck.privilege.desc": "当前软件运行权限级别。标准用户可自由修改用户级 PATH；管理员权限方可执行系统级环境变量治理。",
             "syscheck.storage.desc": "系统盘 (C:) 可用剩余空间。安装开发工具链与下载依赖需要充裕磁盘空间，建议保留 10GB 以上。",
+            // 多版本调度与别名劫持消除
+            "doctor.btnSetActive":              "设为当前主版本",
+            "doctor.aliasHijackBadge":          "WindowsApps 0KB 别名劫持",
+            "doctor.aliasHijackWarning":        "微软应用商店 0KB 别名排在真实 Python 之前，会导致系统命令被劫持。",
+            "doctor.btnFixAlias":               "一键置顶真实解释器",
+            "doctor.switchSuccess":             "已成功将 {0} 切换为当前主版本，相关环境变量已同步生效！",
+            "doctor.switchFailed":              "切换版本失败，请检查路径权限。",
+            "home.switchVersion":               "切换版本",
+            "home.confirmSwitchTitle":          "切换激活版本",
+            "home.confirmSwitchDesc":           "确定将 {0} 的默认版本切换为 {1} 吗？系统将自动置顶 PATH 并同步更新相关环境变量。",
 "lang.label":                       "\u8bed\u8a00"
         }
     };

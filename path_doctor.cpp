@@ -35,6 +35,13 @@ std::string wideToUtf8(const std::wstring& ws) {
     return s;
 }
 
+std::string toLower(std::string s) {
+    for (auto& c : s) {
+        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    }
+    return s;
+}
+
 std::string trim(const std::string& s) {
     auto start = s.find_first_not_of(" \t\r\n\"");
     if (start == std::string::npos) return "";
@@ -199,6 +206,12 @@ PathDoctorReport PathDoctor::diagnose() {
                     conflict.shadowedPath    = fullCandidate;
                     conflict.activeSource    = activeIsSys ? "system" : "user";
                     conflict.shadowedSource  = d.isSys ? "system" : "user";
+                    std::string actLow = toLower(activeDir);
+                    std::string shadLow = toLower(fullCandidate);
+                    if (actLow.find("microsoft\\windowsapps") != std::string::npos &&
+                        shadLow.find("microsoft\\windowsapps") == std::string::npos) {
+                        conflict.isAliasHijack = true;
+                    }
                     report.conflicts.push_back(conflict);
                 }
             }
@@ -368,6 +381,74 @@ bool PathDoctor::prioritizePath(const std::string& targetPath, RollbackManager& 
     }
 
     bool ok = RollbackManager::writeEnvVariable("Path", newPath, REG_EXPAND_SZ, false);
+    if (ok) {
+        RollbackManager::broadcastEnvironmentChange();
+    }
+    return ok;
+}
+
+bool PathDoctor::switchActiveVersion(
+    const std::string& toolType,
+    const std::string& targetBinPath,
+    RollbackManager& rollback,
+    std::string& outSnapshotId)
+{
+    std::string dir = getDirectoryPart(targetBinPath);
+    if (dir.empty()) return false;
+
+    std::string label = toolType.empty() ? "Environment" : toolType;
+    try {
+        outSnapshotId = rollback.createSnapshot("LazyEnv Switch: " + label + " -> " + dir);
+    } catch (...) {
+        outSnapshotId = "";
+    }
+
+    // 1. Move target directory to the very front of User PATH
+    std::string raw = RollbackManager::readEnvVariable("Path", false);
+    auto tokens = splitPath(raw);
+    std::string normTarget = normalizePath(expandPath(dir));
+
+    std::vector<std::string> newTokens;
+    newTokens.push_back(dir);
+
+    for (const auto& tok : tokens) {
+        if (normalizePath(expandPath(tok)) != normTarget) {
+            newTokens.push_back(tok);
+        }
+    }
+
+    std::string newPath;
+    for (size_t i = 0; i < newTokens.size(); ++i) {
+        if (i > 0) newPath += ';';
+        newPath += newTokens[i];
+    }
+    bool ok = RollbackManager::writeEnvVariable("Path", newPath, REG_EXPAND_SZ, false);
+
+    // 2. Cascading environment variable updates
+    std::string lowTool = toLower(toolType);
+    std::string lowPath = toLower(targetBinPath);
+
+    // Cascading JAVA_HOME for Java
+    if (lowTool == "java" || lowTool == "jdk" || lowPath.find("java.exe") != std::string::npos || lowPath.find("jdk") != std::string::npos) {
+        std::filesystem::path p(expandPath(dir));
+        if (toLower(p.filename().string()) == "bin") {
+            std::string javaHome = p.parent_path().string();
+            if (!javaHome.empty()) {
+                RollbackManager::writeEnvVariable("JAVA_HOME", javaHome, REG_SZ, false);
+            }
+        }
+    }
+    // Cascading GOROOT for Go
+    else if (lowTool == "go" || lowPath.find("go.exe") != std::string::npos || lowPath.find("go\\bin") != std::string::npos) {
+        std::filesystem::path p(expandPath(dir));
+        if (toLower(p.filename().string()) == "bin") {
+            std::string goRoot = p.parent_path().string();
+            if (!goRoot.empty()) {
+                RollbackManager::writeEnvVariable("GOROOT", goRoot, REG_SZ, false);
+            }
+        }
+    }
+
     if (ok) {
         RollbackManager::broadcastEnvironmentChange();
     }

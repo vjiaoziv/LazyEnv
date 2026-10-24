@@ -890,7 +890,8 @@ std::string handleWebMessage(const std::string& message) {
                        << "\"activePath\":\"" << jsonEscape(c.activePath) << "\","
                        << "\"shadowedPath\":\"" << jsonEscape(c.shadowedPath) << "\","
                        << "\"activeSource\":\"" << jsonEscape(c.activeSource) << "\","
-                       << "\"shadowedSource\":\"" << jsonEscape(c.shadowedSource) << "\"}";
+                       << "\"shadowedSource\":\"" << jsonEscape(c.shadowedSource) << "\","
+                       << "\"isAliasHijack\":" << (c.isAliasHijack ? "true" : "false") << "}";
                     if (i + 1 < rep.conflicts.size()) os << ",";
                 }
                 os << "]}}";
@@ -948,6 +949,16 @@ std::string handleWebMessage(const std::string& message) {
         bool ok = lazyenv::PathDoctor::prioritizePath(p, g_rollback, snapId);
         return std::format("{{\"action\":\"prioritizePathResult\",\"success\":{},\"snapshotId\":\"{}\"}}",
                            ok ? "true" : "false", jsonEscape(snapId));
+    }
+
+    // ------ PATH Doctor: Switch Active Version with Cascading Env Vars ------
+    if (action == "switchVersion") {
+        std::string tool = extractJsonValue(message, "tool");
+        std::string p = extractJsonValue(message, "path");
+        std::string snapId;
+        bool ok = lazyenv::PathDoctor::switchActiveVersion(tool, p, g_rollback, snapId);
+        return std::format("{{\"action\":\"switchVersionResult\",\"success\":{},\"tool\":\"{}\",\"path\":\"{}\",\"snapshotId\":\"{}\"}}",
+                           ok ? "true" : "false", jsonEscape(tool), jsonEscape(p), jsonEscape(snapId));
     }
 
     // ------ PATH Doctor: Remove a path from User PATH ------

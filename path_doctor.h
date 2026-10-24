@@ -34,6 +34,7 @@ struct CommandConflictItem {
     std::string shadowedPath;
     std::string activeSource;   // "user" or "system"
     std::string shadowedSource; // "user" or "system"
+    bool        isAliasHijack = false;
 };
 
 // Complete diagnostic report
@@ -74,6 +75,9 @@ public:
 
     // Prioritize a path/directory to the front of User PATH
     static bool prioritizePath(const std::string& targetPath, RollbackManager& rollback, std::string& outSnapshotId);
+
+    // Switch active version of a tool, atomically reordering PATH and cascading relevant env vars (e.g. JAVA_HOME, GOROOT)
+    static bool switchActiveVersion(const std::string& toolType, const std::string& targetBinPath, RollbackManager& rollback, std::string& outSnapshotId);
 
     // Remove a directory from User PATH
     static bool removeFromPath(const std::string& targetPath, RollbackManager& rollback, std::string& outSnapshotId);

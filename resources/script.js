@@ -168,6 +168,16 @@
                 }
                 break;
 
+            case "switchVersionResult":
+                if (d.success) {
+                    showToast(t("doctor.switchSuccess", d.tool || d.path), "success");
+                    sendNative({ action: "inspectPathDoctor" });
+                    sendNative({ action: "getInstalledEnvironments" });
+                } else {
+                    showToast(t("doctor.switchFailed"), "error");
+                }
+                break;
+
             case "removeFromPathResult":
                 if (d.success) {
                     showToast(t("doctor.removeSuccess"), "success");
@@ -1011,6 +1021,16 @@
                     mirrorBtnHtml = '<button class="btn btn--sm btn-mirror" data-type="pip">' + esc(t("mirror.btn")) + '</button>';
                 }
 
+                var cmdConflicts = (pathDoctorReport && pathDoctorReport.conflicts) ?
+                    pathDoctorReport.conflicts.filter(function (cf) {
+                        return cf.command.toLowerCase().startsWith(cmdLow) || cmdLow.startsWith(cf.command.toLowerCase().replace(".exe", ""));
+                    }) : [];
+                var switchBtnHtml = "";
+                if (cmdConflicts.length > 0) {
+                    var altPath = cmdConflicts[0].shadowedPath;
+                    switchBtnHtml = '<button class="btn btn--sm btn-switch-version btn-switch-active" data-tool="' + esc(e.command) + '" data-path="' + esc(altPath) + '" title="' + esc(t("home.switchVersion")) + '">' + esc(t("home.switchVersion")) + ' (' + cmdConflicts.length + ')</button>';
+                }
+
                 var cmdInfo = getCommandInfo(e.command);
                 var envTagline = cmdInfo.tagline;
                 var envDesc = cmdInfo.desc;
@@ -1028,6 +1048,7 @@
                     '<div class="card-row__actions">' +
                     mirrorBtnHtml +
                     updateBtnHtml +
+                    switchBtnHtml +
                     '<button class="btn btn--sm btn-uninstall">' + esc(t("env.btnUninstall")) + '</button>' +
                     '</div></div>';
             });
@@ -1058,6 +1079,29 @@
                 var type = btn.getAttribute("data-type") || "npm";
                 currentMirrorType = type;
                 sendNative({ action: "getMirrorSource", type: type });
+            });
+        });
+
+        container.querySelectorAll(".btn-switch-active").forEach(function (btn) {
+            btn.addEventListener("click", function (ev) {
+                ev.stopPropagation();
+                var p = btn.getAttribute("data-path");
+                var tool = btn.getAttribute("data-tool") || "";
+                if (!p) return;
+                showDialog(
+                    t("home.confirmSwitchTitle"),
+                    t("home.confirmSwitchDesc", tool || p, p),
+                    [
+                        { text: t("dialog.cancel") },
+                        {
+                            text: t("doctor.btnSetActive"),
+                            cls: "btn--accent",
+                            handler: function () {
+                                sendNative({ action: "switchVersion", tool: tool, path: p });
+                            }
+                        }
+                    ]
+                );
             });
         });
 
@@ -2781,13 +2825,20 @@
                 rep.conflicts.forEach(function (c) {
                     html += '<div class="conflict-card" style="display:flex; justify-content:space-between; align-items:center; gap:12px;">' +
                         '<div style="flex:1;">' +
-                        '<div class="conflict-card__title">Collision: ' + esc(c.command) + '</div>' +
+                        '<div class="conflict-card__title" style="display:flex;align-items:center;flex-wrap:wrap;gap:6px;">' +
+                        '<span>Collision: ' + esc(c.command) + '</span>' +
+                        (c.isAliasHijack ? ' <span class="badge--hijack">' + esc(t("doctor.aliasHijackBadge")) + '</span>' : '') +
+                        '</div>' +
+                        (c.isAliasHijack ? '<div class="text-warning mb-xs" style="font-size:11px;margin-top:2px;">⚠️ ' + esc(t("doctor.aliasHijackWarning")) + '</div>' : '') +
+                        '<div class="conflict-paths">' +
                         '<div class="conflict-path-row text-success"><span style="font-weight:600">' + esc(t("doctor.active")) + '</span> (' + esc(c.activeSource) + ') ' + esc(c.activePath) + '</div>' +
                         '<div class="conflict-path-row text-secondary"><span style="font-weight:600">' + esc(t("doctor.shadowed")) + '</span> (' + esc(c.shadowedSource) + ') ' + esc(c.shadowedPath) + '</div>' +
                         '</div>' +
                         '<div style="display:flex; flex-direction:column; gap:4px; flex-shrink:0;">' +
                         '<button class="btn btn--xs btn-reveal-path" data-path="' + esc(c.shadowedPath) + '">' + esc(t("doctor.btnReveal")) + '</button>' +
-                        '<button class="btn btn--xs btn-prioritize-path" data-path="' + esc(c.shadowedPath) + '">' + esc(t("doctor.btnPrioritize")) + '</button>' +
+                        (c.isAliasHijack ?
+                            '<button class="btn btn--xs btn-fix-alias btn-switch-active" data-tool="' + esc(c.command) + '" data-path="' + esc(c.shadowedPath) + '">' + esc(t("doctor.btnFixAlias")) + '</button>' :
+                            '<button class="btn btn--xs btn--accent btn-switch-active" data-tool="' + esc(c.command) + '" data-path="' + esc(c.shadowedPath) + '">' + esc(t("doctor.btnSetActive")) + '</button>') +
                         '<button class="btn btn--xs btn-remove-path" data-path="' + esc(c.shadowedPath) + '">' + esc(t("doctor.btnRemove")) + '</button>' +
                         '</div>' +
                         '</div>';
@@ -2846,20 +2897,27 @@
                 });
             });
 
-            list.querySelectorAll(".btn-prioritize-path").forEach(function (btn) {
+            list.querySelectorAll(".btn-prioritize-path, .btn-switch-active").forEach(function (btn) {
                 btn.addEventListener("click", function () {
                     var p = btn.getAttribute("data-path");
+                    var tool = btn.getAttribute("data-tool") || "";
                     if (!p) return;
                     showDialog(
-                        t("doctor.btnPrioritize"),
-                        t("doctor.prioritizeConfirm", p),
+                        t("home.confirmSwitchTitle"),
+                        t("home.confirmSwitchDesc", tool || p, p),
                         [
                             { text: t("dialog.cancel") },
                             {
-                                text: t("doctor.btnPrioritize"),
+                                text: t("doctor.btnSetActive"),
                                 cls: "btn--accent",
-                                action: function () {
-                                    sendNative({ action: "prioritizePath", path: p });
+                                handler: function () {
+                                    sendNative({ action: "switchVersion", tool: tool, path: p });
+                                }
+                            }
+                        ]
+                    );
+                });
+            });
                                 }
                             }
                         ]
