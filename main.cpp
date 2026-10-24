@@ -78,6 +78,18 @@ std::wstring utf8ToWide(const std::string& s) {
     return ws;
 }
 
+std::string wideToUtf8(const std::wstring& ws) {
+    if (ws.empty()) return {};
+    int len = WideCharToMultiByte(CP_UTF8, 0, ws.data(),
+                                  static_cast<int>(ws.size()),
+                                  nullptr, 0, nullptr, nullptr);
+    std::string s; s.resize(len);
+    WideCharToMultiByte(CP_UTF8, 0, ws.data(),
+                        static_cast<int>(ws.size()),
+                        s.data(), len, nullptr, nullptr);
+    return s;
+}
+
 std::string jsonEscape(const std::string& s) {
     std::string out;
     out.reserve(s.size() + 32);
@@ -242,11 +254,17 @@ std::string detectInstalledEnvironments() {
         {"ripgrep",      "rg",        "--version", "utility"},
         {"fd",           "fd",        "--version", "utility"},
         {"fzf",          "fzf",       "--version", "utility"},
+        {"VS Code",      "code",      "--version", "editor"},
+        {"Rust (rustup)","rustup",    "--version", "language"},
+        {"Neovim",       "nvim",      "--version", "editor"},
+        {"PostgreSQL",   "psql",      "--version", "database"},
+        {"Redis",        "redis-cli", "--version", "database"},
     };
 
     std::ostringstream os;
     os << "[";
     bool first = true;
+    bool foundVSCode = false;
 
     for (auto& chk : checks) {
         std::string output;
@@ -269,6 +287,7 @@ std::string detectInstalledEnvironments() {
         }
 
         if (rc == 0 && !version.empty()) {
+            if (chk.command == "code") foundVSCode = true;
             if (!first) os << ",";
             first = false;
             os << "{\"name\":\"" << jsonEscape(chk.name)
@@ -278,6 +297,41 @@ std::string detectInstalledEnvironments() {
                << "\"}";
         }
     }
+    // Physical path fallback for VS Code if not found in PATH
+    if (!foundVSCode) {
+        std::vector<std::wstring> vsCodePaths;
+        wchar_t localApp[MAX_PATH];
+        if (GetEnvironmentVariableW(L"LOCALAPPDATA", localApp, MAX_PATH) > 0) {
+            vsCodePaths.push_back(std::wstring(localApp) + L"\\Programs\\Microsoft VS Code\\Code.exe");
+        }
+        wchar_t progFiles[MAX_PATH];
+        if (GetEnvironmentVariableW(L"ProgramFiles", progFiles, MAX_PATH) > 0) {
+            vsCodePaths.push_back(std::wstring(progFiles) + L"\\Microsoft VS Code\\Code.exe");
+        }
+        for (const auto& wpath : vsCodePaths) {
+            DWORD attr = GetFileAttributesW(wpath.c_str());
+            if (attr != INVALID_FILE_ATTRIBUTES && !(attr & FILE_ATTRIBUTE_DIRECTORY)) {
+                std::string exeUtf8 = wideToUtf8(wpath);
+                std::string out;
+                int rc = lazyenv::Installer::runCommand("\"" + exeUtf8 + "\" --version 2>&1", out, 5000);
+                if (rc == 0 && !out.empty()) {
+                    auto nl = out.find('\n');
+                    std::string ver = out.substr(0, nl == std::string::npos ? out.size() : nl);
+                    while (!ver.empty() && (ver.back() == '\r' || ver.back() == '\n' || ver.back() == ' ')) ver.pop_back();
+                    if (!ver.empty()) {
+                        if (!first) os << ",";
+                        first = false;
+                        os << "{\"name\":\"VS Code\","
+                           << "\"command\":\"code\","
+                           << "\"version\":\"" << jsonEscape(ver) << "\","
+                           << "\"category\":\"editor\"}";
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
     os << "]";
     return os.str();
 }

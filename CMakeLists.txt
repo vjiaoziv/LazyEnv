@@ -5,7 +5,7 @@
 cmake_minimum_required(VERSION 3.24)
 
 project(LazyEnv
-    VERSION   0.8.6
+    VERSION   0.8.7
     LANGUAGES CXX
 )
 

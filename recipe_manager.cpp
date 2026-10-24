@@ -87,6 +87,29 @@ std::string toLower(std::string s) {
     return s;
 }
 
+static const std::unordered_map<std::string, std::vector<std::string>> kPackageToCmds = {
+    {"Microsoft.VisualStudioCode", {"code"}},
+    {"Rustlang.Rustup",            {"rustup", "rustc", "cargo"}},
+    {"Neovim.Neovim",              {"nvim"}},
+    {"Python.Python.3.12",         {"python", "python3"}},
+    {"OpenJS.NodeJS.LTS",          {"node"}},
+    {"GoLang.Go",                  {"go"}},
+    {"Oracle.JDK.21",              {"java", "javac"}},
+    {"Kitware.CMake",              {"cmake"}},
+    {"Ninja-build.Ninja",          {"ninja"}},
+    {"LLVM.LLVM",                  {"clang", "clang++", "llvm"}},
+    {"Git.Git",                    {"git"}},
+    {"GitHub.cli",                 {"gh"}},
+    {"Docker.DockerDesktop",       {"docker"}},
+    {"PostgreSQL.PostgreSQL.16",   {"psql", "postgres"}},
+    {"Redis.Redis",                {"redis-cli", "redis-server"}},
+    {"jqlang.jq",                  {"jq"}},
+    {"BurntSushi.ripgrep.MSVC",    {"rg", "ripgrep"}},
+    {"sharkdp.fd",                 {"fd"}},
+    {"junegunn.fzf",               {"fzf"}},
+    {"WinSCP.WinSCP",              {"winscp"}}
+};
+
 } // anonymous namespace
 
 std::string RecipeManager::serializeRecipeToJson(const EnvironmentRecipe& r) {
@@ -273,7 +296,7 @@ EnvironmentRecipe RecipeManager::createRecipeFromCurrentState(
     r.metadata.description    = desc.empty() ? "Exported from LazyEnv" : desc;
     r.metadata.author         = author.empty() ? "LazyEnv User" : author;
 #ifndef LAZYENV_VERSION_STRING
-#define LAZYENV_VERSION_STRING "0.8.6"
+#define LAZYENV_VERSION_STRING "0.8.7"
 #endif
 
     r.metadata.createdAt      = getIsoTimestamp();
@@ -343,21 +366,20 @@ RecipeDiffReport RecipeManager::analyzeRecipeDiff(
     }
 
     for (const auto& p : r.packages) {
-        std::string idLow   = toLower(p.id);
-        std::string nameLow = toLower(p.name);
-
         bool alreadyInstalled = false;
-
-        // Check if command or name matches current installed environments
-        for (const auto& cmd : installedCmds) {
-            if (idLow.find(cmd) != std::string::npos || nameLow.find(cmd) != std::string::npos) {
-                alreadyInstalled = true;
-                break;
+        auto it = kPackageToCmds.find(p.id);
+        if (it != kPackageToCmds.end()) {
+            for (const auto& cmd : it->second) {
+                if (installedCmds.find(toLower(cmd)) != installedCmds.end()) {
+                    alreadyInstalled = true;
+                    break;
+                }
             }
-        }
-        if (!alreadyInstalled) {
-            for (const auto& n : installedNames) {
-                if (nameLow.find(n) != std::string::npos || n.find(nameLow) != std::string::npos) {
+        } else {
+            std::string idLow = toLower(p.id);
+            std::string nameLow = toLower(p.name);
+            for (const auto& cmd : installedCmds) {
+                if (idLow == cmd || nameLow == cmd) {
                     alreadyInstalled = true;
                     break;
                 }

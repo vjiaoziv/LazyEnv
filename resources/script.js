@@ -103,6 +103,9 @@
             case "environmentsDetected":
                 detectedEnvironments = d.environments || [];
                 renderEnvironments();
+                if (currentPage === "packages") {
+                    renderCatalog(document.getElementById("pkgSearch") ? document.getElementById("pkgSearch").value : "");
+                }
                 break;
 
             case "exportRecipeResult":
@@ -1437,6 +1440,43 @@
     // -----------------------------------------------------------------------
     // Packages
     // -----------------------------------------------------------------------
+    var kPackageCommandMap = {
+        "Microsoft.VisualStudioCode": ["code"],
+        "Rustlang.Rustup": ["rustup", "rustc", "cargo"],
+        "Neovim.Neovim": ["nvim"],
+        "Python.Python.3.12": ["python", "python3"],
+        "OpenJS.NodeJS.LTS": ["node"],
+        "GoLang.Go": ["go"],
+        "Oracle.JDK.21": ["java", "javac"],
+        "Kitware.CMake": ["cmake"],
+        "Ninja-build.Ninja": ["ninja"],
+        "LLVM.LLVM": ["clang", "clang++", "llvm"],
+        "Git.Git": ["git"],
+        "GitHub.cli": ["gh"],
+        "Docker.DockerDesktop": ["docker"],
+        "PostgreSQL.PostgreSQL.16": ["psql", "postgres"],
+        "Redis.Redis": ["redis-cli", "redis-server"],
+        "jqlang.jq": ["jq"],
+        "BurntSushi.ripgrep.MSVC": ["rg", "ripgrep"],
+        "sharkdp.fd": ["fd"],
+        "junegunn.fzf": ["fzf"],
+        "WinSCP.WinSCP": ["winscp"]
+    };
+
+    function isPackageInstalled(pkg) {
+        var cmds = kPackageCommandMap[pkg.id];
+        if (!cmds && pkg.name) {
+            cmds = [pkg.name.toLowerCase().replace(/[^a-z0-9]/g, "")];
+        }
+        if (!cmds) return false;
+
+        var allEnvs = (detectedEnvironments || []).concat(manualEnvironments || []);
+        return allEnvs.some(function (e) {
+            var c = (e.command || "").toLowerCase().trim();
+            return cmds.indexOf(c) !== -1;
+        });
+    }
+
     function renderCatalog(filter) {
         var container = document.getElementById("packageList");
         var pkgs = catalog;
@@ -1463,14 +1503,7 @@
             groups[cat].forEach(function (p) {
                 var sel = selectedPackages.has(p.id);
                 var iconSvg = window.LazyEnvIcons.getIcon(p.id || p.name, p.category);
-                var isInstalled = false;
-                var low = (p.id + " " + p.name).toLowerCase();
-                detectedEnvironments.forEach(function (e) {
-                    var elow = ((e.command || "") + " " + (e.name || "")).toLowerCase();
-                    if (low.includes((e.command || "").toLowerCase()) || elow.includes((p.name || "").toLowerCase())) {
-                        isInstalled = true;
-                    }
-                });
+                var isInstalled = isPackageInstalled(p);
                 var instBadge = isInstalled ? ' <span class="badge--source" style="background:rgba(255,255,255,0.06);color:var(--text-tertiary);margin-left:6px;font-size:10px;">' + esc(t("common.installed")) + '</span>' : '';
                 html += '<div class="card-row card-row--selectable' + (sel ? ' card-row--selected' : '') + '" data-id="' + esc(p.id) + '">' +
                     '<div class="card-row__check">' +
