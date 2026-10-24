@@ -107,7 +107,23 @@ static const std::unordered_map<std::string, std::vector<std::string>> kPackageT
     {"BurntSushi.ripgrep.MSVC",    {"rg", "ripgrep"}},
     {"sharkdp.fd",                 {"fd"}},
     {"junegunn.fzf",               {"fzf"}},
-    {"WinSCP.WinSCP",              {"winscp"}}
+    {"WinSCP.WinSCP",              {"winscp"}},
+    {"astral-sh.uv",               {"uv"}},
+    {"Schniz.fnm",                 {"fnm"}},
+    {"version-fox.vfox",           {"vfox"}},
+    {"jdx.mise",                   {"mise"}},
+    {"Microsoft.WindowsTerminal",  {"wt"}},
+    {"Microsoft.PowerShell",       {"pwsh"}},
+    {"Starship.Starship",          {"starship"}},
+    {"ajeetdsouza.zoxide",         {"zoxide"}},
+    {"sharkdp.bat",                {"bat"}},
+    {"eza-community.eza",          {"eza"}},
+    {"7zip.7zip",                  {"7z"}},
+    {"Kubernetes.kubectl",         {"kubectl"}},
+    {"Helm.Helm",                  {"helm"}},
+    {"Hashicorp.Terraform",        {"terraform"}},
+    {"DBeaver.DBeaver.Community",  {"dbeaver"}},
+    {"Postman.Postman",            {"postman"}}
 };
 
 } // anonymous namespace
@@ -296,7 +312,7 @@ EnvironmentRecipe RecipeManager::createRecipeFromCurrentState(
     r.metadata.description    = desc.empty() ? "Exported from LazyEnv" : desc;
     r.metadata.author         = author.empty() ? "LazyEnv User" : author;
 #ifndef LAZYENV_VERSION_STRING
-#define LAZYENV_VERSION_STRING "0.8.7"
+#define LAZYENV_VERSION_STRING "0.8.8"
 #endif
 
     r.metadata.createdAt      = getIsoTimestamp();
@@ -321,7 +337,19 @@ EnvironmentRecipe RecipeManager::createRecipeFromCurrentState(
         {"rg",      {"BurntSushi.ripgrep.MSVC", "ripgrep"}},
         {"fd",      {"sharkdp.fd", "fd"}},
         {"fzf",     {"junegunn.fzf", "fzf"}},
-        {"pwsh",    {"Microsoft.PowerShell", "PowerShell"}}
+        {"pwsh",      {"Microsoft.PowerShell", "PowerShell"}},
+        {"uv",        {"astral-sh.uv", "uv"}},
+        {"fnm",       {"Schniz.fnm", "fnm"}},
+        {"vfox",      {"version-fox.vfox", "vfox"}},
+        {"mise",      {"jdx.mise", "mise"}},
+        {"starship",  {"Starship.Starship", "Starship"}},
+        {"zoxide",    {"ajeetdsouza.zoxide", "zoxide"}},
+        {"bat",       {"sharkdp.bat", "bat"}},
+        {"eza",       {"eza-community.eza", "eza"}},
+        {"7z",        {"7zip.7zip", "7-Zip"}},
+        {"kubectl",   {"Kubernetes.kubectl", "kubectl"}},
+        {"helm",      {"Helm.Helm", "Helm"}},
+        {"terraform", {"Hashicorp.Terraform", "Terraform"}}
     };
 
     for (const auto& env : detectedEnvs) {

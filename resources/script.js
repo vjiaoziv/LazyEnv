@@ -1460,8 +1460,23 @@
         "BurntSushi.ripgrep.MSVC": ["rg", "ripgrep"],
         "sharkdp.fd": ["fd"],
         "junegunn.fzf": ["fzf"],
-        "WinSCP.WinSCP": ["winscp"]
-    };
+        "WinSCP.WinSCP": ["winscp"],
+        "astral-sh.uv": ["uv"],
+        "Schniz.fnm": ["fnm"],
+        "version-fox.vfox": ["vfox"],
+        "jdx.mise": ["mise"],
+        "Microsoft.WindowsTerminal": ["wt", "windowsterminal"],
+        "Microsoft.PowerShell": ["pwsh"],
+        "Starship.Starship": ["starship"],
+        "ajeetdsouza.zoxide": ["zoxide"],
+        "sharkdp.bat": ["bat"],
+        "eza-community.eza": ["eza"],
+        "7zip.7zip": ["7z", "7za"],
+        "Kubernetes.kubectl": ["kubectl"],
+        "Helm.Helm": ["helm"],
+        "Hashicorp.Terraform": ["terraform"],
+        "DBeaver.DBeaver.Community": ["dbeaver"],
+        "Postman.Postman": ["postman"]    };
 
     function isPackageInstalled(pkg) {
         var cmds = kPackageCommandMap[pkg.id];
@@ -2989,6 +3004,82 @@
                 ]
             },
             {
+                key: "uv-ai",
+                name: t("featured.uvAiName"),
+                desc: t("featured.uvAiDesc"),
+                author: "LazyEnv",
+                icon: "⚡",
+                tags: ["uv", "Python 3.12", "Git", "VS Code"],
+                packages: [
+                    { id: "astral-sh.uv", name: "uv", source: "winget" },
+                    { id: "Python.Python.3.12", name: "Python 3.12", source: "winget" },
+                    { id: "Git.Git", name: "Git", source: "winget" },
+                    { id: "Microsoft.VisualStudioCode", name: "VS Code", source: "winget" }
+                ],
+                mirrors: { npm: "", pip: "https://pypi.tuna.tsinghua.edu.cn/simple" },
+                envVars: [
+                    { name: "UV_SYSTEM_PYTHON", value: "1" },
+                    { name: "PYTHONUTF8", value: "1" }
+                ]
+            },
+            {
+                key: "go-cloud",
+                name: t("featured.goCloudName"),
+                desc: t("featured.goCloudDesc"),
+                author: "LazyEnv",
+                icon: "🐹",
+                tags: ["Go", "Docker Desktop", "Git", "VS Code"],
+                packages: [
+                    { id: "GoLang.Go", name: "Go", source: "winget" },
+                    { id: "Docker.DockerDesktop", name: "Docker Desktop", source: "winget" },
+                    { id: "Git.Git", name: "Git", source: "winget" },
+                    { id: "Microsoft.VisualStudioCode", name: "VS Code", source: "winget" }
+                ],
+                mirrors: { npm: "", pip: "" },
+                envVars: [
+                    { name: "GOPROXY", value: "https://goproxy.cn,direct" },
+                    { name: "GO111MODULE", value: "on" }
+                ]
+            },
+            {
+                key: "shell-powerhouse",
+                name: t("featured.shellPowerName"),
+                desc: t("featured.shellPowerDesc"),
+                author: "LazyEnv",
+                icon: "🚀",
+                tags: ["Windows Terminal", "PowerShell 7", "Starship", "zoxide", "ripgrep", "bat", "fzf"],
+                packages: [
+                    { id: "Microsoft.WindowsTerminal", name: "Windows Terminal", source: "winget" },
+                    { id: "Microsoft.PowerShell", name: "PowerShell 7", source: "winget" },
+                    { id: "Starship.Starship", name: "Starship", source: "winget" },
+                    { id: "ajeetdsouza.zoxide", name: "zoxide", source: "winget" },
+                    { id: "BurntSushi.ripgrep.MSVC", name: "ripgrep", source: "winget" },
+                    { id: "sharkdp.bat", name: "bat", source: "winget" },
+                    { id: "junegunn.fzf", name: "fzf", source: "winget" }
+                ],
+                mirrors: { npm: "", pip: "" },
+                envVars: []
+            },
+            {
+                key: "devops-infra",
+                name: t("featured.devopsInfraName"),
+                desc: t("featured.devopsInfraDesc"),
+                author: "LazyEnv",
+                icon: "☁️",
+                tags: ["Docker", "kubectl", "Helm", "Terraform", "GitHub CLI"],
+                packages: [
+                    { id: "Docker.DockerDesktop", name: "Docker Desktop", source: "winget" },
+                    { id: "Kubernetes.kubectl", name: "kubectl", source: "winget" },
+                    { id: "Helm.Helm", name: "Helm", source: "winget" },
+                    { id: "Hashicorp.Terraform", name: "Terraform", source: "winget" },
+                    { id: "GitHub.cli", name: "GitHub CLI", source: "winget" }
+                ],
+                mirrors: { npm: "", pip: "" },
+                envVars: [
+                    { name: "KUBECONFIG", value: "%USERPROFILE%\\.kube\\config" }
+                ]
+            },
+            {
                 key: "toolkit",
                 name: t("featured.toolkitName"),
                 desc: t("featured.toolkitDesc"),
@@ -3045,11 +3136,15 @@
                 var ready = [];
 
                 item.packages.forEach(function (p) {
-                    var low = (p.name || p.id).toLowerCase();
                     var found = false;
-                    installedCmds.forEach(function (c) {
-                        if (low.includes(c)) found = true;
-                    });
+                    var cmds = kPackageCommandMap[p.id];
+                    if (cmds && cmds.length > 0) {
+                        found = cmds.some(function (c) { return installedCmds.has(c.toLowerCase()); });
+                    } else {
+                        var exactName = (p.name || "").toLowerCase().trim();
+                        var exactId = (p.id || "").toLowerCase().trim();
+                        found = installedCmds.has(exactName) || installedCmds.has(exactId);
+                    }
                     if (found) ready.push(p);
                     else missing.push(p);
                 });

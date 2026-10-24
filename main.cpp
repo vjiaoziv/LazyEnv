@@ -259,12 +259,25 @@ std::string detectInstalledEnvironments() {
         {"Neovim",       "nvim",      "--version", "editor"},
         {"PostgreSQL",   "psql",      "--version", "database"},
         {"Redis",        "redis-cli", "--version", "database"},
+        {"uv",           "uv",        "--version", "tool"},
+        {"fnm",          "fnm",       "--version", "tool"},
+        {"vfox",         "vfox",      "--version", "tool"},
+        {"mise",         "mise",      "--version", "tool"},
+        {"Starship",     "starship",  "--version", "utility"},
+        {"zoxide",       "zoxide",    "--version", "utility"},
+        {"bat",          "bat",       "--version", "utility"},
+        {"eza",          "eza",       "--version", "utility"},
+        {"kubectl",      "kubectl",   "version --client", "tool"},
+        {"helm",         "helm",      "version --short", "tool"},
+        {"terraform",    "terraform", "version",   "tool"},
+        {"7-Zip",        "7z",        "",          "utility"},
     };
 
     std::ostringstream os;
     os << "[";
     bool first = true;
     bool foundVSCode = false;
+    bool found7z = false;
 
     for (auto& chk : checks) {
         std::string output;
@@ -288,6 +301,7 @@ std::string detectInstalledEnvironments() {
 
         if (rc == 0 && !version.empty()) {
             if (chk.command == "code") foundVSCode = true;
+            if (chk.command == "7z") found7z = true;
             if (!first) os << ",";
             first = false;
             os << "{\"name\":\"" << jsonEscape(chk.name)
@@ -326,6 +340,32 @@ std::string detectInstalledEnvironments() {
                            << "\"version\":\"" << jsonEscape(ver) << "\","
                            << "\"category\":\"editor\"}";
                         break;
+                    }
+                }
+            }
+        }
+    }
+
+    if (!found7z) {
+        wchar_t progFiles[MAX_PATH];
+        if (GetEnvironmentVariableW(L"ProgramFiles", progFiles, MAX_PATH) > 0) {
+            std::wstring p7z = std::wstring(progFiles) + L"\\7-Zip\\7z.exe";
+            DWORD attr = GetFileAttributesW(p7z.c_str());
+            if (attr != INVALID_FILE_ATTRIBUTES && !(attr & FILE_ATTRIBUTE_DIRECTORY)) {
+                std::string exeUtf8 = wideToUtf8(p7z);
+                std::string out;
+                int rc = lazyenv::Installer::runCommand("\"" + exeUtf8 + "\" 2>&1", out, 5000);
+                if (rc == 0 || !out.empty()) {
+                    auto nl = out.find('\n');
+                    std::string ver = out.substr(0, nl == std::string::npos ? out.size() : nl);
+                    while (!ver.empty() && (ver.back() == '\r' || ver.back() == '\n' || ver.back() == ' ')) ver.pop_back();
+                    if (!ver.empty()) {
+                        if (!first) os << ",";
+                        first = false;
+                        os << "{\"name\":\"7-Zip\","
+                           << "\"command\":\"7z\","
+                           << "\"version\":\"" << jsonEscape(ver) << "\","
+                           << "\"category\":\"utility\"}";
                     }
                 }
             }

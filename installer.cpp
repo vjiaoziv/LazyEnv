@@ -805,6 +805,77 @@ std::vector<PackageInfo> getDefaultCatalog() {
         {"WinSCP.WinSCP", "WinSCP", "utility",
          "SFTP/SCP/FTP client for Windows",
          "", false},
+    
+
+        // --- Modern Version & Environment Managers ---
+        {"astral-sh.uv", "uv", "tool",
+         "Extremely fast Python package and project manager written in Rust",
+         "%USERPROFILE%\\.cargo\\bin;%LOCALAPPDATA%\\uv", true},
+
+        {"Schniz.fnm", "fnm", "tool",
+         "Fast and simple Node.js version manager built in Rust",
+         "%LOCALAPPDATA%\\fnm", true},
+
+        {"version-fox.vfox", "vfox", "tool",
+         "Cross-platform extensible version manager with native Windows support",
+         "", true},
+
+        {"jdx.mise", "mise", "tool",
+         "Polyglot dev tool & environment version manager",
+         "", true},
+
+        // --- Terminal & Shell Enhancements ---
+        {"Microsoft.WindowsTerminal", "Windows Terminal", "utility",
+         "Modern terminal application for command-line users",
+         "", false},
+
+        {"Microsoft.PowerShell", "PowerShell 7", "tool",
+         "Modern cross-platform automation and configuration shell",
+         "C:\\Program Files\\PowerShell\\7", true},
+
+        {"Starship.Starship", "Starship", "utility",
+         "The minimal, blazingly fast, and infinitely customizable cross-shell prompt",
+         "", true},
+
+        {"ajeetdsouza.zoxide", "zoxide", "utility",
+         "A smarter cd command that learns your habits",
+         "", true},
+
+        // --- Modern CLI Productivity ---
+        {"sharkdp.bat", "bat", "utility",
+         "Cat clone with syntax highlighting and Git integration",
+         "", true},
+
+        {"eza-community.eza", "eza", "utility",
+         "Modern and vibrant replacement for ls",
+         "", true},
+
+        // --- Cloud Native & DevOps ---
+        {"Kubernetes.kubectl", "kubectl", "tool",
+         "Kubernetes command-line tool for cluster management",
+         "", true},
+
+        {"Helm.Helm", "Helm", "tool",
+         "The package manager for Kubernetes",
+         "", true},
+
+        {"Hashicorp.Terraform", "Terraform", "tool",
+         "Infrastructure as Code tool for building and versioning cloud resources",
+         "", true},
+
+        // --- Databases & API Tooling ---
+        {"DBeaver.DBeaver.Community", "DBeaver Community", "database",
+         "Free universal database tool and SQL client",
+         "", false},
+
+        {"Postman.Postman", "Postman", "utility",
+         "API platform for building and using APIs",
+         "", false},
+
+        // --- System Utilities ---
+        {"7zip.7zip", "7-Zip", "utility",
+         "File archiver with a high compression ratio",
+         "C:\\Program Files\\7-Zip", true},
     };
 }
 
