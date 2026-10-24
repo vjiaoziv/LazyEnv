@@ -3009,15 +3009,17 @@
                 desc: t("featured.uvAiDesc"),
                 author: "LazyEnv",
                 icon: "⚡",
-                tags: ["uv", "Python 3.12", "Git", "VS Code"],
+                tags: ["uv", "Python 3.12", "Git", "VS Code", "jq"],
                 packages: [
                     { id: "astral-sh.uv", name: "uv", source: "winget" },
                     { id: "Python.Python.3.12", name: "Python 3.12", source: "winget" },
                     { id: "Git.Git", name: "Git", source: "winget" },
-                    { id: "Microsoft.VisualStudioCode", name: "VS Code", source: "winget" }
+                    { id: "Microsoft.VisualStudioCode", name: "VS Code", source: "winget" },
+                    { id: "jqlang.jq", name: "jq", source: "winget" }
                 ],
                 mirrors: { npm: "", pip: "https://pypi.tuna.tsinghua.edu.cn/simple" },
                 envVars: [
+                    { name: "UV_INDEX_URL", value: "https://pypi.tuna.tsinghua.edu.cn/simple" },
                     { name: "UV_SYSTEM_PYTHON", value: "1" },
                     { name: "PYTHONUTF8", value: "1" }
                 ]
@@ -3028,10 +3030,12 @@
                 desc: t("featured.goCloudDesc"),
                 author: "LazyEnv",
                 icon: "🐹",
-                tags: ["Go", "Docker Desktop", "Git", "VS Code"],
+                tags: ["Go", "Docker Desktop", "PostgreSQL", "Redis", "Git", "VS Code"],
                 packages: [
                     { id: "GoLang.Go", name: "Go", source: "winget" },
                     { id: "Docker.DockerDesktop", name: "Docker Desktop", source: "winget" },
+                    { id: "PostgreSQL.PostgreSQL.16", name: "PostgreSQL 16", source: "winget" },
+                    { id: "Redis.Redis", name: "Redis", source: "winget" },
                     { id: "Git.Git", name: "Git", source: "winget" },
                     { id: "Microsoft.VisualStudioCode", name: "VS Code", source: "winget" }
                 ],
@@ -3047,14 +3051,16 @@
                 desc: t("featured.shellPowerDesc"),
                 author: "LazyEnv",
                 icon: "🚀",
-                tags: ["Windows Terminal", "PowerShell 7", "Starship", "zoxide", "ripgrep", "bat", "fzf"],
+                tags: ["Windows Terminal", "PowerShell 7", "Starship", "zoxide", "bat", "eza", "ripgrep", "fd", "fzf"],
                 packages: [
                     { id: "Microsoft.WindowsTerminal", name: "Windows Terminal", source: "winget" },
                     { id: "Microsoft.PowerShell", name: "PowerShell 7", source: "winget" },
                     { id: "Starship.Starship", name: "Starship", source: "winget" },
                     { id: "ajeetdsouza.zoxide", name: "zoxide", source: "winget" },
-                    { id: "BurntSushi.ripgrep.MSVC", name: "ripgrep", source: "winget" },
                     { id: "sharkdp.bat", name: "bat", source: "winget" },
+                    { id: "eza-community.eza", name: "eza", source: "winget" },
+                    { id: "BurntSushi.ripgrep.MSVC", name: "ripgrep", source: "winget" },
+                    { id: "sharkdp.fd", name: "fd", source: "winget" },
                     { id: "junegunn.fzf", name: "fzf", source: "winget" }
                 ],
                 mirrors: { npm: "", pip: "" },
@@ -3066,13 +3072,14 @@
                 desc: t("featured.devopsInfraDesc"),
                 author: "LazyEnv",
                 icon: "☁️",
-                tags: ["Docker", "kubectl", "Helm", "Terraform", "GitHub CLI"],
+                tags: ["Docker", "kubectl", "Helm", "Terraform", "GitHub CLI", "jq"],
                 packages: [
                     { id: "Docker.DockerDesktop", name: "Docker Desktop", source: "winget" },
                     { id: "Kubernetes.kubectl", name: "kubectl", source: "winget" },
                     { id: "Helm.Helm", name: "Helm", source: "winget" },
                     { id: "Hashicorp.Terraform", name: "Terraform", source: "winget" },
-                    { id: "GitHub.cli", name: "GitHub CLI", source: "winget" }
+                    { id: "GitHub.cli", name: "GitHub CLI", source: "winget" },
+                    { id: "jqlang.jq", name: "jq", source: "winget" }
                 ],
                 mirrors: { npm: "", pip: "" },
                 envVars: [
