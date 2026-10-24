@@ -185,7 +185,7 @@
                 if (d.success) {
                     var totalFixed = (d.deadRemoved || 0) + (d.dupRemoved || 0);
                     if (totalFixed === 0 && !d.userCleaned && !d.systemCleaned) {
-                        showToast(t("doctor.cleanNoneNeeded") || "PATH 环境变量已处于最佳状态，未检测到冗余死链或重复项。", "info");
+                        showToast(t("doctor.cleanNoneNeeded"), "info");
                     } else if (d.systemRequiresElevation && !d.systemCleaned) {
                         showToast(t("doctor.partialCleanSuccess"), "warning");
                     } else {
@@ -874,6 +874,7 @@
         if (e && e.detail && e.detail.locale) { currentLanguage = e.detail.locale; } else if (window.LazyEnvI18n) { currentLanguage = window.LazyEnvI18n.getLocale(); }
         t = window.LazyEnvI18n.t;
         renderEnvironments(document.getElementById("homeSearch") ? document.getElementById("homeSearch").value : "");
+        renderHomeMetrics();
         if (currentPage === "updates") {
             renderUpdatesHub(document.getElementById("updatesSearch") ? document.getElementById("updatesSearch").value : "");
             if (lastBatchSummary && lastBatchSummary.failCount > 0) {
@@ -1385,7 +1386,7 @@
             {
                 icon: "💾",
                 title: t("syscheck.storage"),
-                value: (d.diskFree || "Unknown") + " " + (currentLanguage === "zh-CN" ? "可用空间" : "Free"),
+                value: (d.diskFree || "Unknown") + " " + t("syscheck.freeSpace"),
                 status: t("syscheck.statusReady"),
                 badgeCls: "tag--winget"
             },
@@ -2474,16 +2475,16 @@
     // -----------------------------------------------------------------------
     var MIRRORS = {
         npm: [
-            { name: "Aliyun (阿里云镜像)", url: "https://registry.npmmirror.com" },
-            { name: "Tencent (腾讯云镜像)", url: "https://mirrors.cloud.tencent.com/npm/" },
-            { name: "Huawei (华为云镜像)", url: "https://repo.huaweicloud.com/repository/npm/" },
-            { name: "Official (官方默认源)", url: "https://registry.npmjs.org/" }
+            { nameKey: "mirror.preset.aliyun", url: "https://registry.npmmirror.com" },
+            { nameKey: "mirror.preset.tencent", url: "https://mirrors.cloud.tencent.com/npm/" },
+            { nameKey: "mirror.preset.huawei", url: "https://repo.huaweicloud.com/repository/npm/" },
+            { nameKey: "mirror.preset.official", url: "https://registry.npmjs.org/" }
         ],
         pip: [
-            { name: "Tsinghua (清华大学开源镜像)", url: "https://pypi.tuna.tsinghua.edu.cn/simple" },
-            { name: "Aliyun (阿里云镜像)", url: "https://mirrors.aliyun.com/pypi/simple/" },
-            { name: "Tencent (腾讯云镜像)", url: "https://mirrors.cloud.tencent.com/pypi/simple" },
-            { name: "Official (官方默认源)", url: "https://pypi.org/simple" }
+            { nameKey: "mirror.preset.tsinghua", url: "https://pypi.tuna.tsinghua.edu.cn/simple" },
+            { nameKey: "mirror.preset.aliyun", url: "https://mirrors.aliyun.com/pypi/simple/" },
+            { nameKey: "mirror.preset.tencent", url: "https://mirrors.cloud.tencent.com/pypi/simple" },
+            { nameKey: "mirror.preset.official", url: "https://pypi.org/simple" }
         ]
     };
 
@@ -2499,7 +2500,7 @@
             var checked = (currentUrl.trim() === m.url.trim() || (idx === 0 && !currentUrl)) ? "checked" : "";
             bodyHtml += '<label class="mirror-option">' +
                 '<input type="radio" name="mirrorUrlChoice" value="' + esc(m.url) + '" ' + checked + '>' +
-                '<div><div style="font-weight:600; font-size:13px;">' + esc(m.name) + '</div>' +
+                '<div><div style="font-weight:600; font-size:13px;">' + esc(m.nameKey ? t(m.nameKey) : m.name) + '</div>' +
                 '<div class="text-secondary" style="font-size:11px;">' + esc(m.url) + '</div></div>' +
                 '</label>';
         });
@@ -2536,14 +2537,14 @@
 
         var totalEnvs = detectedEnvironments.length + manualEnvironments.length;
         if (elEnvs) {
-            elEnvs.textContent = totalEnvs + " " + (currentLanguage === "zh-CN" ? "项" : "tools");
+            elEnvs.textContent = t("home.metric.envsValue", totalEnvs);
         }
 
         if (elUpdates) {
             if (isCheckingHubUpdates) {
                 elUpdates.textContent = t("home.checkingUpdates");
             } else if (hubUpdates.length > 0) {
-                elUpdates.textContent = hubUpdates.length + " " + (currentLanguage === "zh-CN" ? "项可用" : "available");
+                elUpdates.textContent = t("home.metric.updatesValue", hubUpdates.length);
             } else {
                 elUpdates.textContent = t("home.upToDate");
             }
@@ -2551,7 +2552,7 @@
 
         if (elDoctor) {
             if (lastDoctorScore !== null) {
-                elDoctor.textContent = lastDoctorScore + " " + (currentLanguage === "zh-CN" ? "分" : "pts");
+                elDoctor.textContent = t("home.metric.scoreValue", lastDoctorScore);
                 var card = document.getElementById("cardHomeDoctor");
                 var icon = document.getElementById("homeMetricDoctorIcon");
                 elDoctor.className = "home-metric-card__value";
@@ -2579,17 +2580,15 @@
                     var cCount = pathDoctorReport ? (pathDoctorReport.conflicts ? pathDoctorReport.conflicts.length : 0) : (savedDoctorCache ? savedDoctorCache.conflicts || 0 : 0);
                     var dCount = pathDoctorReport ? (pathDoctorReport.duplicateEntries || 0) : (savedDoctorCache ? savedDoctorCache.duplicates || 0 : 0);
                     if (cCount > 0 || dCount > 0) {
-                        subText.textContent = (currentLanguage === "zh-CN" ? 
-                            (cCount + " 项冲突 · " + dCount + " 项重复") : 
-                            (cCount + " conflicts · " + dCount + " dups"));
+                        subText.textContent = t("home.metric.conflictDupSub", cCount, dCount);
                     } else {
-                        subText.textContent = (currentLanguage === "zh-CN" ? "环境健康" : "Healthy & Clean");
+                        subText.textContent = t("home.metric.healthySub");
                     }
                 }
             } else {
                 elDoctor.textContent = "--";
                 var subText = document.getElementById("homeMetricDoctorSub");
-                if (subText) subText.textContent = (currentLanguage === "zh-CN" ? "点击执行健康体检 →" : "Click to inspect →");
+                if (subText) subText.textContent = t("home.metric.inspectSub");
             }
         }
     }

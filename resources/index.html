@@ -23,13 +23,13 @@
         <span class="titlebar__label">LazyEnv</span>
     </div>
     <div class="titlebar__controls">
-        <button class="titlebar__btn" id="btnMin" title="Minimize">
+        <button class="titlebar__btn" id="btnMin" title="Minimize" data-i18n-title="btn.minimize">
             <svg viewBox="0 0 10 1"><rect width="10" height="1" fill="currentColor"/></svg>
         </button>
-        <button class="titlebar__btn" id="btnMax" title="Maximize">
+        <button class="titlebar__btn" id="btnMax" title="Maximize" data-i18n-title="btn.maximize">
             <svg viewBox="0 0 10 10"><rect x="0.5" y="0.5" width="9" height="9" stroke="currentColor" fill="none" stroke-width="1"/></svg>
         </button>
-        <button class="titlebar__btn titlebar__btn--close" id="btnClose" title="Close">
+        <button class="titlebar__btn titlebar__btn--close" id="btnClose" title="Close" data-i18n-title="btn.close">
             <svg viewBox="0 0 10 10"><line x1="0" y1="0" x2="10" y2="10" stroke="currentColor" stroke-width="1.2"/><line x1="10" y1="0" x2="0" y2="10" stroke="currentColor" stroke-width="1.2"/></svg>
         </button>
     </div>
@@ -278,7 +278,7 @@
                 <!-- Detailed Two-Layer Progress Dashboard -->
                 <div class="card-box mb-lg" id="batchProgressBox" style="display:none">
                     <div class="flex-between mb-xs">
-                        <span id="batchProgressTitle" style="font-weight:600; font-size:15px">Updating packages...</span>
+                        <span id="batchProgressTitle" style="font-weight:600; font-size:15px" data-i18n="updates.updatingBatchTitle">Updating packages...</span>
                         <span id="batchProgressCount" class="text-accent" style="font-weight:600">0 / 0</span>
                     </div>
                     <div class="progress-bar mb-md">
@@ -292,13 +292,13 @@
                                 <span id="subtaskName" style="font-weight:600">-</span>
                                 <span class="badge--source" id="subtaskSource" style="margin-left:6px">-</span>
                             </div>
-                            <span class="phase-pill phase-pill--preparing" id="subtaskPhase">Preparing</span>
+                            <span class="phase-pill phase-pill--preparing" id="subtaskPhase" data-i18n="phase.preparing">Preparing</span>
                         </div>
                         <div class="progress-bar progress-bar--sub mb-xs">
                             <div class="progress-bar__fill" id="subtaskProgressFill" style="width:0%"></div>
                         </div>
                         <div class="flex-between" style="font-size:12px; color:var(--text-secondary)">
-                            <span id="subtaskMsg">Starting installer...</span>
+                            <span id="subtaskMsg" data-i18n="updates.startingInstaller">Starting installer...</span>
                             <span id="subtaskDetail">-</span>
                         </div>
                     </div>
@@ -323,11 +323,11 @@
                             </svg>
                             <span style="font-weight:600; font-size:15px; color:var(--status-error)" data-i18n="diag.titleFailures">Upgrade Failures Detected</span>
                         </div>
-                        <button class="btn btn--sm btn--danger" id="btnOneClickRollback" title="Rollback environment changes" data-i18n="diag.btnRollback">
+                        <button class="btn btn--sm btn--danger" id="btnOneClickRollback" title="Rollback environment changes" data-i18n-title="diag.btnRollback" data-i18n="diag.btnRollback">
                             One-Click Rollback
                         </button>
                     </div>
-                    <p class="text-secondary mb-md" id="diagSummaryText" style="font-size:13px">
+                    <p class="text-secondary mb-md" id="diagSummaryText" style="font-size:13px" data-i18n="updates.failedNotice">
                         Some packages failed to update. A pre-update snapshot is available to restore your system anytime.
                     </p>
                     <div id="diagFailuresList" class="mb-md"></div>
@@ -367,8 +367,8 @@
                 <!-- Pre-flight Diff Box -->
                 <div class="card-box mb-lg diag-card" id="recipeDiffBox" style="display:none">
                     <div class="flex-between mb-sm">
-                        <div style="font-weight:600; font-size:16px;" id="diffRecipeName">Recipe Diff Preflight</div>
-                        <span class="badge--source tag--winget" id="diffRecipeAuthor">Author</span>
+                        <div style="font-weight:600; font-size:16px;" id="diffRecipeName" data-i18n="recipes.diffPreflightTitle">Recipe Diff Preflight</div>
+                        <span class="badge--source tag--winget" id="diffRecipeAuthor" data-i18n="recipes.authorLabel">Author</span>
                     </div>
                     <p class="text-secondary mb-md" id="diffRecipeDesc" style="font-size:13px"></p>
 
@@ -608,7 +608,7 @@
                 <!-- Sticky Bottom Action Bar -->
                 <div class="sticky-bottom-bar" id="pkgStickyBar">
                     <div class="flex-align-center" style="gap:12px;">
-                        <span class="sticky-bottom-bar__count" id="pkgSelectedCount">0 items selected</span>
+                        <span class="sticky-bottom-bar__count" id="pkgSelectedCount" data-i18n="packages.selectedCount">0 selected</span>
                         <button class="btn btn--sm" id="btnStickyClear" data-i18n="packages.deselectAll">Deselect All</button>
                     </div>
                     <button class="btn btn--accent" id="btnStartInstall" data-i18n="packages.startInstall">Start Installation →</button>
