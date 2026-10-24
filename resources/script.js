@@ -49,7 +49,12 @@
     var environmentUpdates = new Map();
     var hubUpdates = [];
     var currentHubFilter = "all";
-    var lastDoctorScore = null;
+    var savedDoctorCache = null;
+    try {
+        var rawCache = localStorage.getItem("lazyenv_doctor_cache");
+        if (rawCache) savedDoctorCache = JSON.parse(rawCache);
+    } catch (_) {}
+    var lastDoctorScore = savedDoctorCache && typeof savedDoctorCache.score === "number" ? savedDoctorCache.score : null;
     var currentMirrorType = "npm";
     var pathDoctorReport = null;
     var isDoctorRunning = false;
@@ -139,7 +144,37 @@
                 }
                 pathDoctorReport = d.report || null;
                 if (pathDoctorReport) {
+                    lastDoctorScore = pathDoctorReport.healthScore;
+                    try {
+                        localStorage.setItem("lazyenv_doctor_cache", JSON.stringify({
+                            score: pathDoctorReport.healthScore,
+                            time: Date.now(),
+                            conflicts: (pathDoctorReport.conflicts || []).length,
+                            duplicates: pathDoctorReport.duplicateEntries || 0
+                        }));
+                    } catch (_) {}
                     renderDoctorReport(pathDoctorReport);
+                    renderHomeMetrics();
+                }
+                break;
+
+            case "prioritizePathResult":
+                if (d.success) {
+                    showToast(t("doctor.prioritizeSuccess"), "success");
+                    sendNative({ action: "inspectPathDoctor" });
+                }
+                break;
+
+            case "removeFromPathResult":
+                if (d.success) {
+                    showToast(t("doctor.removeSuccess"), "success");
+                    sendNative({ action: "inspectPathDoctor" });
+                }
+                break;
+
+            case "doctorReportExported":
+                if (d.success) {
+                    showToast(t("doctor.reportExported"), "success");
                 }
                 break;
 
@@ -2461,8 +2496,44 @@
         if (elDoctor) {
             if (lastDoctorScore !== null) {
                 elDoctor.textContent = lastDoctorScore + " " + (currentLanguage === "zh-CN" ? "分" : "pts");
+                var card = document.getElementById("cardHomeDoctor");
+                var icon = document.getElementById("homeMetricDoctorIcon");
+                elDoctor.className = "home-metric-card__value";
+                if (lastDoctorScore >= 80) {
+                    elDoctor.classList.add("text-success");
+                    if (icon) {
+                        icon.style.background = "rgba(46,204,113,0.15)";
+                        icon.style.color = "#2ecc71";
+                    }
+                } else if (lastDoctorScore >= 60) {
+                    elDoctor.classList.add("text-warning");
+                    if (icon) {
+                        icon.style.background = "rgba(252,225,0,0.15)";
+                        icon.style.color = "var(--status-warning)";
+                    }
+                } else {
+                    elDoctor.classList.add("text-danger");
+                    if (icon) {
+                        icon.style.background = "rgba(232,17,35,0.15)";
+                        icon.style.color = "var(--status-error)";
+                    }
+                }
+                var subText = document.getElementById("homeMetricDoctorSub");
+                if (subText) {
+                    var cCount = pathDoctorReport ? (pathDoctorReport.conflicts ? pathDoctorReport.conflicts.length : 0) : (savedDoctorCache ? savedDoctorCache.conflicts || 0 : 0);
+                    var dCount = pathDoctorReport ? (pathDoctorReport.duplicateEntries || 0) : (savedDoctorCache ? savedDoctorCache.duplicates || 0 : 0);
+                    if (cCount > 0 || dCount > 0) {
+                        subText.textContent = (currentLanguage === "zh-CN" ? 
+                            (cCount + " 项冲突 · " + dCount + " 项重复") : 
+                            (cCount + " conflicts · " + dCount + " dups"));
+                    } else {
+                        subText.textContent = (currentLanguage === "zh-CN" ? "环境健康" : "Healthy & Clean");
+                    }
+                }
             } else {
                 elDoctor.textContent = "--";
+                var subText = document.getElementById("homeMetricDoctorSub");
+                if (subText) subText.textContent = (currentLanguage === "zh-CN" ? "点击执行健康体检 →" : "Click to inspect →");
             }
         }
     }
@@ -2529,6 +2600,38 @@
             }
         }
 
+        var btnExportReport = document.getElementById("btnExportDoctorReport");
+        if (btnExportReport) {
+            btnExportReport.style.display = "inline-flex";
+        }
+
+        var lenBox = document.getElementById("doctorPathLengthBox");
+        if (lenBox && rep.userPathLength !== undefined) {
+            lenBox.style.display = "block";
+            var uLen = rep.userPathLength || 0;
+            var sLen = rep.systemPathLength || 0;
+            var totLen = uLen + sLen;
+            var uEl = document.getElementById("docUserPathLen");
+            var sEl = document.getElementById("docSysPathLen");
+            var totEl = document.getElementById("docTotalPathLen");
+            var stEl = document.getElementById("docPathLengthStatus");
+            if (uEl) uEl.textContent = t("doctor.pathLengthUser", uLen);
+            if (sEl) sEl.textContent = t("doctor.pathLengthSys", sLen);
+            if (totEl) totEl.textContent = t("doctor.pathLengthTotal", totLen);
+            if (stEl) {
+                if (totLen > 8192) {
+                    stEl.textContent = t("doctor.pathLengthDanger");
+                    stEl.style.color = "var(--status-error)";
+                } else if (totLen > 2048) {
+                    stEl.textContent = t("doctor.pathLengthWarn");
+                    stEl.style.color = "var(--status-warning)";
+                } else {
+                    stEl.textContent = t("doctor.pathLengthSafe");
+                    stEl.style.color = "var(--status-success)";
+                }
+            }
+        }
+
         var hasIssues = (rep.deadEntries > 0 || rep.duplicateEntries > 0 || (rep.conflicts && rep.conflicts.length > 0));
         if (drawer && list) {
             if (!hasIssues) {
@@ -2545,10 +2648,17 @@
                 html += '<div class="mb-sm" style="font-weight:600; font-size:13px; color:var(--accent);">' +
                         esc(t("doctor.conflictsTitle")) + ' (' + rep.conflicts.length + ')</div>';
                 rep.conflicts.forEach(function (c) {
-                    html += '<div class="conflict-card">' +
+                    html += '<div class="conflict-card" style="display:flex; justify-content:space-between; align-items:center; gap:12px;">' +
+                        '<div style="flex:1;">' +
                         '<div class="conflict-card__title">Collision: ' + esc(c.command) + '</div>' +
                         '<div class="conflict-path-row text-success"><span style="font-weight:600">' + esc(t("doctor.active")) + '</span> (' + esc(c.activeSource) + ') ' + esc(c.activePath) + '</div>' +
                         '<div class="conflict-path-row text-secondary"><span style="font-weight:600">' + esc(t("doctor.shadowed")) + '</span> (' + esc(c.shadowedSource) + ') ' + esc(c.shadowedPath) + '</div>' +
+                        '</div>' +
+                        '<div style="display:flex; flex-direction:column; gap:4px; flex-shrink:0;">' +
+                        '<button class="btn btn--xs btn-reveal-path" data-path="' + esc(c.shadowedPath) + '">' + esc(t("doctor.btnReveal")) + '</button>' +
+                        '<button class="btn btn--xs btn-prioritize-path" data-path="' + esc(c.shadowedPath) + '">' + esc(t("doctor.btnPrioritize")) + '</button>' +
+                        '<button class="btn btn--xs btn-remove-path" data-path="' + esc(c.shadowedPath) + '">' + esc(t("doctor.btnRemove")) + '</button>' +
+                        '</div>' +
                         '</div>';
                 });
             }
@@ -2579,9 +2689,9 @@
                 });
             }
 
-            // Check if any system entry has dead paths
-            var hasSystemDead = (rep.systemEntries || []).some(function (e) { return !e.exists; });
-            if (hasSystemDead) {
+            // Check if any system entry has dead paths or duplicates requiring elevation
+            var needsAdmin = (rep.systemEntries || []).some(function (e) { return !e.exists || e.isDuplicate; });
+            if (needsAdmin) {
                 html += '<div class="elevation-notice-box" style="margin-top:14px; display:flex; align-items:center; justify-content:space-between; background:rgba(252,225,0,0.08); border:1px solid rgba(252,225,0,0.3); padding:10px 14px; border-radius:var(--radius-sm);">' +
                     '<span style="font-size:12px; color:var(--text-primary);">&#9888; ' + esc(t("doctor.elevationBanner")) + '</span>' +
                     '<button class="btn btn--sm btn--accent" id="btnRelaunchAdmin">' + esc(t("doctor.btnRelaunchAdmin")) + '</button>' +
@@ -2596,7 +2706,110 @@
                     sendNative({ action: "relaunchAsAdmin" });
                 });
             }
+
+            // Conflict card action listeners
+            list.querySelectorAll(".btn-reveal-path").forEach(function (btn) {
+                btn.addEventListener("click", function () {
+                    var p = btn.getAttribute("data-path");
+                    if (p) sendNative({ action: "openPathInExplorer", path: p });
+                });
+            });
+
+            list.querySelectorAll(".btn-prioritize-path").forEach(function (btn) {
+                btn.addEventListener("click", function () {
+                    var p = btn.getAttribute("data-path");
+                    if (!p) return;
+                    showDialog(
+                        t("doctor.btnPrioritize"),
+                        t("doctor.prioritizeConfirm", p),
+                        [
+                            { text: t("dialog.cancel") },
+                            {
+                                text: t("doctor.btnPrioritize"),
+                                cls: "btn--accent",
+                                action: function () {
+                                    sendNative({ action: "prioritizePath", path: p });
+                                }
+                            }
+                        ]
+                    );
+                });
+            });
+
+            list.querySelectorAll(".btn-remove-path").forEach(function (btn) {
+                btn.addEventListener("click", function () {
+                    var p = btn.getAttribute("data-path");
+                    if (!p) return;
+                    showDialog(
+                        t("doctor.btnRemove"),
+                        t("doctor.removeConfirm", p),
+                        [
+                            { text: t("dialog.cancel") },
+                            {
+                                text: t("doctor.btnRemove"),
+                                cls: "btn--danger",
+                                action: function () {
+                                    sendNative({ action: "removeFromPath", path: p });
+                                }
+                            }
+                        ]
+                    );
+                });
+            });
         }
+    }
+
+    var btnExportDoc = document.getElementById("btnExportDoctorReport");
+    if (btnExportDoc) {
+        btnExportDoc.addEventListener("click", function () {
+            if (!pathDoctorReport) return;
+            var r = pathDoctorReport;
+            var md = "# LazyEnv PATH Doctor Diagnostic Report\n\n" +
+                     "- Generated: " + new Date().toISOString() + "\n" +
+                     "- Health Score: **" + r.healthScore + " / 100**\n" +
+                     "- Total Entries: " + r.totalEntries + "\n" +
+                     "- Valid Entries: " + r.validEntries + "\n" +
+                     "- Dead Paths: " + r.deadEntries + "\n" +
+                     "- Duplicate Paths: " + r.duplicateEntries + "\n" +
+                     "- Conflicts / Shadowing: " + (r.conflicts ? r.conflicts.length : 0) + "\n" +
+                     "- User PATH Length: " + (r.userPathLength || 0) + " chars\n" +
+                     "- System PATH Length: " + (r.systemPathLength || 0) + " chars\n\n" +
+                     "## Command Collisions & Shadowing\n\n";
+
+            if (r.conflicts && r.conflicts.length > 0) {
+                r.conflicts.forEach(function (c) {
+                    md += "### " + c.command + "\n" +
+                          "- **Active**: (" + c.activeSource + ") `" + c.activePath + "`\n" +
+                          "- **Shadowed**: (" + c.shadowedSource + ") `" + c.shadowedPath + "`\n\n";
+                });
+            } else {
+                md += "No collisions detected.\n\n";
+            }
+
+            md += "## Duplicate Paths\n\n";
+            var dups = (r.userEntries || []).concat(r.systemEntries || []).filter(function (e) { return e.isDuplicate; });
+            if (dups.length > 0) {
+                dups.forEach(function (d) {
+                    md += "- [" + (d.isSystem ? "System" : "User") + "] `" + d.rawPath + "`\n";
+                });
+                md += "\n";
+            } else {
+                md += "No duplicate paths.\n\n";
+            }
+
+            md += "## Dead Paths\n\n";
+            var deads = (r.userEntries || []).concat(r.systemEntries || []).filter(function (e) { return !e.exists; });
+            if (deads.length > 0) {
+                deads.forEach(function (d) {
+                    md += "- [" + (d.isSystem ? "System" : "User") + "] `" + d.rawPath + "`\n";
+                });
+                md += "\n";
+            } else {
+                md += "No dead paths.\n\n";
+            }
+
+            sendNative({ action: "exportDoctorReportDialog", content: md });
+        });
     }
 
     var btnRunDoc = document.getElementById("btnRunDoctor");
@@ -2985,6 +3198,11 @@
             sendNative({ action: "getAllUpdates" });
         }
     }, 200);
+
+    // Silent background PATH health diagnostic on startup to keep home score fresh
+    setTimeout(function () {
+        sendNative({ action: "inspectPathDoctor" });
+    }, 400);
 
     // -----------------------------------------------------------------------
     // Settings Sub-Tabs & Preferences

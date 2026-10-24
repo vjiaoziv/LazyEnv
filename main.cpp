@@ -68,6 +68,16 @@ static bool                     g_isMaximized = false;
 // ---------------------------------------------------------------------------
 namespace {
 
+std::wstring utf8ToWide(const std::string& s) {
+    if (s.empty()) return {};
+    int len = MultiByteToWideChar(CP_UTF8, 0, s.data(),
+                                  static_cast<int>(s.size()), nullptr, 0);
+    std::wstring ws; ws.resize(len);
+    MultiByteToWideChar(CP_UTF8, 0, s.data(),
+                        static_cast<int>(s.size()), ws.data(), len);
+    return ws;
+}
+
 std::string jsonEscape(const std::string& s) {
     std::string out;
     out.reserve(s.size() + 32);
@@ -758,6 +768,8 @@ std::string handleWebMessage(const std::string& message) {
                    << "\"validEntries\":" << rep.validEntries << ","
                    << "\"deadEntries\":" << rep.deadEntries << ","
                    << "\"duplicateEntries\":" << rep.duplicateEntries << ","
+                   << "\"userPathLength\":" << rep.userPathLength << ","
+                   << "\"systemPathLength\":" << rep.systemPathLength << ","
                    << "\"userEntries\":[";
                 for (size_t i = 0; i < rep.userEntries.size(); ++i) {
                     const auto& e = rep.userEntries[i];
@@ -823,6 +835,78 @@ std::string handleWebMessage(const std::string& message) {
             }
         }).detach();
         return "{\"action\":\"pathDoctorAutoCleanStarted\"}";
+    }
+
+    // ------ Open path in Windows Explorer (select file or directory) ------
+    if (action == "openPathInExplorer") {
+        std::string p = extractJsonValue(message, "path");
+        if (!p.empty()) {
+            std::wstring wp = utf8ToWide(p);
+            std::wstring param = L"/select,\"" + wp + L"\"";
+            ShellExecuteW(NULL, L"open", L"explorer.exe", param.c_str(), NULL, SW_SHOWNORMAL);
+        }
+        return "{\"action\":\"openPathInExplorerResult\",\"success\":true}";
+    }
+
+    // ------ PATH Doctor: Prioritize a path in User PATH ------
+    if (action == "prioritizePath") {
+        std::string p = extractJsonValue(message, "path");
+        std::string snapId;
+        bool ok = lazyenv::PathDoctor::prioritizePath(p, g_rollback, snapId);
+        return std::format("{{\"action\":\"prioritizePathResult\",\"success\":{},\"snapshotId\":\"{}\"}}",
+                           ok ? "true" : "false", jsonEscape(snapId));
+    }
+
+    // ------ PATH Doctor: Remove a path from User PATH ------
+    if (action == "removeFromPath") {
+        std::string p = extractJsonValue(message, "path");
+        std::string snapId;
+        bool ok = lazyenv::PathDoctor::removeFromPath(p, g_rollback, snapId);
+        return std::format("{{\"action\":\"removeFromPathResult\",\"success\":{},\"snapshotId\":\"{}\"}}",
+                           ok ? "true" : "false", jsonEscape(snapId));
+    }
+
+    // ------ PATH Doctor: Export diagnostic report to file ------
+    if (action == "exportDoctorReportDialog") {
+        std::string reportContent = extractJsonValue(message, "content");
+        HWND owner = g_mainWindow;
+        std::thread([owner, reportContent]() {
+            CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+            IFileSaveDialog* pDialog = nullptr;
+            if (SUCCEEDED(CoCreateInstance(CLSID_FileSaveDialog, nullptr, CLSCTX_INPROC_SERVER,
+                                           IID_IFileSaveDialog, reinterpret_cast<void**>(&pDialog)))) {
+                COMDLG_FILTERSPEC filters[] = {
+                    { L"Markdown Reports (*.md)", L"*.md" },
+                    { L"JSON Files (*.json)", L"*.json" },
+                    { L"All Files (*.*)", L"*.*" }
+                };
+                pDialog->SetFileTypes(3, filters);
+                pDialog->SetDefaultExtension(L"md");
+                pDialog->SetFileName(L"LazyEnv-PathDoctor-Report.md");
+
+                if (SUCCEEDED(pDialog->Show(owner))) {
+                    IShellItem* pItem = nullptr;
+                    if (SUCCEEDED(pDialog->GetResult(&pItem))) {
+                        PWSTR pszFilePath = nullptr;
+                        if (SUCCEEDED(pItem->GetDisplayName(SIGDN_FILESYSPATH, &pszFilePath))) {
+                            std::ofstream f(pszFilePath, std::ios::trunc | std::ios::binary);
+                            if (f.is_open()) {
+                                f << reportContent;
+                                f.close();
+                                g_webview.postMessage("{\"action\":\"doctorReportExported\",\"success\":true}");
+                            } else {
+                                g_webview.postMessage("{\"action\":\"doctorReportExported\",\"success\":false}");
+                            }
+                            CoTaskMemFree(pszFilePath);
+                        }
+                        pItem->Release();
+                    }
+                }
+                pDialog->Release();
+            }
+            CoUninitialize();
+        }).detach();
+        return "{\"action\":\"exportDoctorReportStarted\"}";
     }
 
     // ------ Relaunch LazyEnv as Administrator (UAC elevation) ------

@@ -1,3 +1,4 @@
+#include <filesystem>
 // LazyEnv - Cross-platform, recoverable, zero-pollution dev environment configurator
 // Copyright (C) 2026 Rein
 //
@@ -116,6 +117,9 @@ PathDoctorReport PathDoctor::diagnose() {
     std::string userRawPath = RollbackManager::readEnvVariable("Path", false);
     std::string sysRawPath  = RollbackManager::readEnvVariable("Path", true);
 
+    report.userPathLength   = static_cast<int>(userRawPath.size());
+    report.systemPathLength = static_cast<int>(sysRawPath.size());
+
     auto userTokens = splitPath(userRawPath);
     auto sysTokens  = splitPath(sysRawPath);
 
@@ -149,8 +153,9 @@ PathDoctorReport PathDoctor::diagnose() {
         }
     };
 
-    processList(userTokens, false, report.userEntries);
+    // Windows searches System PATH first, then User PATH
     processList(sysTokens, true, report.systemEntries);
+    processList(userTokens, false, report.userEntries);
 
     // Command Shadowing & Collision detection
     static const std::vector<std::string> kToolsToCheck = {
@@ -164,11 +169,12 @@ PathDoctorReport PathDoctor::diagnose() {
         bool isSys;
     };
     std::vector<DirRef> orderedValidDirs;
-    for (const auto& e : report.userEntries) {
-        if (e.exists && !e.isDuplicate) orderedValidDirs.push_back({e.expandedPath, false});
-    }
+    // System PATH directories come first in Windows command resolution
     for (const auto& e : report.systemEntries) {
         if (e.exists && !e.isDuplicate) orderedValidDirs.push_back({e.expandedPath, true});
+    }
+    for (const auto& e : report.userEntries) {
+        if (e.exists && !e.isDuplicate) orderedValidDirs.push_back({e.expandedPath, false});
     }
 
     for (const auto& tool : kToolsToCheck) {
@@ -204,6 +210,11 @@ PathDoctorReport PathDoctor::diagnose() {
     score -= (std::min)(40, report.deadEntries * 5);
     score -= (std::min)(20, report.duplicateEntries * 2);
     score -= (std::min)(20, static_cast<int>(report.conflicts.size()) * 4);
+
+    int totalPathLength = report.userPathLength + report.systemPathLength;
+    if (totalPathLength > 2048) score -= 5;
+    if (totalPathLength > 4096) score -= 5;
+    if (totalPathLength > 8192) score -= 10;
     if (score < 10 && (report.validEntries > 0)) score = 15;
     if (score < 0) score = 0;
     if (score > 100) score = 100;
@@ -267,6 +278,79 @@ AutoCleanResult PathDoctor::autoClean(bool cleanUser, bool cleanSystem, Rollback
     }
 
     return result;
+}
+
+static std::string getDirectoryPart(const std::string& path) {
+    std::filesystem::path p(utf8ToWide(path));
+    if (std::filesystem::is_directory(p)) {
+        return path;
+    }
+    return wideToUtf8(p.parent_path().wstring());
+}
+
+bool PathDoctor::prioritizePath(const std::string& targetPath, RollbackManager& rollback, std::string& outSnapshotId) {
+    std::string dir = getDirectoryPart(targetPath);
+    if (dir.empty()) return false;
+
+    try {
+        outSnapshotId = rollback.createSnapshot("PATH Doctor: Prioritize " + dir);
+    } catch (...) {
+        outSnapshotId = "";
+    }
+
+    std::string raw = RollbackManager::readEnvVariable("Path", false);
+    auto tokens = splitPath(raw);
+    std::string normTarget = normalizePath(expandPath(dir));
+
+    std::vector<std::string> newTokens;
+    newTokens.push_back(dir);
+
+    for (const auto& tok : tokens) {
+        if (normalizePath(expandPath(tok)) != normTarget) {
+            newTokens.push_back(tok);
+        }
+    }
+
+    std::string newPath;
+    for (size_t i = 0; i < newTokens.size(); ++i) {
+        if (i > 0) newPath += ';';
+        newPath += newTokens[i];
+    }
+
+    bool ok = RollbackManager::writeEnvVariable("Path", newPath, REG_EXPAND_SZ, false);
+    if (ok) {
+        RollbackManager::broadcastEnvironmentChange();
+    }
+    return ok;
+}
+
+bool PathDoctor::removeFromPath(const std::string& targetPath, RollbackManager& rollback, std::string& outSnapshotId) {
+    std::string dir = getDirectoryPart(targetPath);
+    if (dir.empty()) return false;
+
+    try {
+        outSnapshotId = rollback.createSnapshot("PATH Doctor: Remove " + dir);
+    } catch (...) {
+        outSnapshotId = "";
+    }
+
+    std::string raw = RollbackManager::readEnvVariable("Path", false);
+    auto tokens = splitPath(raw);
+    std::string normTarget = normalizePath(expandPath(dir));
+
+    std::string newPath;
+    for (const auto& tok : tokens) {
+        if (normalizePath(expandPath(tok)) != normTarget) {
+            if (!newPath.empty() && newPath.back() != ';') newPath += ';';
+            newPath += tok;
+        }
+    }
+
+    bool ok = RollbackManager::writeEnvVariable("Path", newPath, REG_EXPAND_SZ, false);
+    if (ok) {
+        RollbackManager::broadcastEnvironmentChange();
+    }
+    return ok;
 }
 
 } // namespace lazyenv

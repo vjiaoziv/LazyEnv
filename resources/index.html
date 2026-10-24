@@ -108,7 +108,7 @@
         </div>
 
         <div class="sidebar__footer">
-            <span class="sidebar__version">LazyEnv v0.8.3</span>
+            <span class="sidebar__version">LazyEnv v0.8.4</span>
             <select class="sidebar__lang-select" id="langSelect">
                 <option value="en">English</option>
                 <option value="zh-CN">中文</option>
@@ -155,7 +155,7 @@
                     </div>
 
                     <div class="home-metric-card home-metric-card--clickable" id="cardHomeDoctor">
-                        <div class="home-metric-card__icon" style="background:rgba(46,204,113,0.15); color:#2ecc71;">
+                        <div class="home-metric-card__icon" id="homeMetricDoctorIcon" style="background:rgba(46,204,113,0.15); color:#2ecc71;">
                             <svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor">
                                 <path d="M1.5 0A1.5 1.5 0 0 0 0 1.5v13A1.5 1.5 0 0 0 1.5 16h13a1.5 1.5 0 0 0 1.5-1.5v-13A1.5 1.5 0 0 0 14.5 0h-13zM8 3.5a.5.5 0 0 1 .5.5v2.5H11a.5.5 0 0 1 0 1H8.5V10a.5.5 0 0 1-1 0V7.5H5a.5.5 0 0 1 0-1h2.5V4a.5.5 0 0 1 .5-.5z"/>
                             </svg>
@@ -163,6 +163,7 @@
                         <div class="home-metric-card__body">
                             <div class="home-metric-card__label" data-i18n="home.metric.pathScore">PATH Health Score</div>
                             <div class="home-metric-card__value text-success" id="homeMetricDoctor">--</div>
+                            <div class="text-secondary" style="font-size:11px; margin-top:2px;" id="homeMetricDoctorSub"></div>
                         </div>
                         <span class="home-metric-card__arrow">→</span>
                     </div>
@@ -433,6 +434,9 @@
                                 <button class="btn btn--sm btn--accent" id="btnAutoCleanPath" style="display:none">
                                     <span data-i18n="doctor.btnAutoClean">Auto Clean & Fix</span>
                                 </button>
+                                <button class="btn btn--sm" id="btnExportDoctorReport" style="display:none">
+                                    <span data-i18n="doctor.btnExportReport">Export Report</span>
+                                </button>
                             </div>
                         </div>
 
@@ -453,6 +457,19 @@
                             <div class="metric-mini-card">
                                 <div class="metric-mini-card__label" data-i18n="doctor.conflictLabel">Conflicts</div>
                                 <div class="metric-mini-card__value text-accent" id="docConflictCount">0</div>
+                            </div>
+                        </div>
+
+                        <!-- PATH Length & Buffer Monitor -->
+                        <div class="card-box mb-md" id="doctorPathLengthBox" style="display:none; padding:12px 16px; background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-radius:var(--radius-sm); margin-top:14px;">
+                            <div class="flex-between mb-xs">
+                                <span style="font-size:12px; font-weight:600;" data-i18n="doctor.pathLengthTitle">PATH Length & Buffer Monitor</span>
+                                <span style="font-size:12px; font-weight:600;" id="docPathLengthStatus">Normal</span>
+                            </div>
+                            <div style="display:flex; flex-wrap:wrap; gap:16px; font-size:12px; color:var(--text-secondary);">
+                                <span id="docUserPathLen">User PATH: 0 chars</span>
+                                <span id="docSysPathLen">System PATH: 0 chars</span>
+                                <span id="docTotalPathLen">Total: 0 chars</span>
                             </div>
                         </div>
 
@@ -531,7 +548,7 @@
                         <div class="flex-between">
                             <div>
                                 <div style="font-weight:600;font-size:13px;" data-i18n="settings.prefAbout">About LazyEnv</div>
-                                <div class="text-secondary" style="font-size:12px;">LazyEnv v0.8.3 • Open-Source Developer Environment Configurator</div>
+                                <div class="text-secondary" style="font-size:12px;">LazyEnv v0.8.4 • Open-Source Developer Environment Configurator</div>
                                 <div class="text-secondary" style="font-size:11px; margin-top:4px;">Co-developed with Codex & DSH</div>
                             </div>
                             <button class="btn btn--sm" id="btnOpenGitHub" data-i18n="settings.prefOpenRepo">GitHub Repository</button>

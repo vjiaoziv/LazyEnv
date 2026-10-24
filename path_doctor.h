@@ -43,6 +43,8 @@ struct PathDoctorReport {
     int validEntries     = 0;
     int deadEntries      = 0;
     int duplicateEntries = 0;
+    int userPathLength   = 0;
+    int systemPathLength = 0;
     std::vector<PathEntryDiagnostic> userEntries;
     std::vector<PathEntryDiagnostic> systemEntries;
     std::vector<CommandConflictItem> conflicts;
@@ -67,6 +69,12 @@ public:
 
     // Auto-clean dead & duplicate entries with pre-clean snapshot protection and graceful UAC elevation fallback
     static AutoCleanResult autoClean(bool cleanUser, bool cleanSystem, RollbackManager& rollback);
+
+    // Prioritize a path/directory to the front of User PATH
+    static bool prioritizePath(const std::string& targetPath, RollbackManager& rollback, std::string& outSnapshotId);
+
+    // Remove a directory from User PATH
+    static bool removeFromPath(const std::string& targetPath, RollbackManager& rollback, std::string& outSnapshotId);
 };
 
 } // namespace lazyenv
