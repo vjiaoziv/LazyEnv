@@ -419,7 +419,7 @@ std::string handleWebMessage(const std::string& message) {
         std::thread([pkgName]() {
             try {
                 std::string output;
-                std::string cmd = "winget uninstall --name \"" + pkgName + "\" --silent --accept-source-agreements 2>&1";
+                std::string cmd = lazyenv::Installer::getWingetExecutable() + " uninstall --name \"" + pkgName + "\" --silent --accept-source-agreements 2>&1";
                 int rc = lazyenv::Installer::runCommand(cmd, output, 300000);
                 std::string respMsg = std::format(
                     "{{\"action\":\"uninstallResult\",\"command\":\"{}\",\"success\":{},\"output\":\"{}\"}}",
@@ -1105,8 +1105,9 @@ std::string handleWebMessage(const std::string& message) {
                 }
 
                 std::string cmdLine = std::format(
-                    "winget install --id {} --exact --silent "
+                    "{} install --id {} --exact --silent "
                     "--accept-package-agreements --accept-source-agreements",
+                    lazyenv::Installer::getWingetExecutable(),
                     pkg.id);
 
                 // Send "running" status
@@ -1191,8 +1192,9 @@ std::string handleWebMessage(const std::string& message) {
             }
 
             std::string cmdLine = std::format(
-                "winget install --id {} --exact --silent "
+                "{} install --id {} --exact --silent "
                 "--accept-package-agreements --accept-source-agreements",
+                lazyenv::Installer::getWingetExecutable(),
                 pkg.id);
 
             {

@@ -33,6 +33,8 @@
     // -----------------------------------------------------------------------
     // State
     // -----------------------------------------------------------------------
+    var currentLanguage = (window.LazyEnvI18n && window.LazyEnvI18n.getLocale) ? window.LazyEnvI18n.getLocale() : "en";
+    var unpinnedCount = 0;
     var currentPage = "home";
     var catalog = [];
     var selectedPackages = new Set();
@@ -815,16 +817,19 @@
     }
     if (savedLang) {
         langSelect.value = savedLang;
+        currentLanguage = savedLang;
         window.LazyEnvI18n.setLocale(savedLang);
     }
 
     langSelect.addEventListener("change", function () {
         var chosen = langSelect.value;
+        currentLanguage = chosen;
         localStorage.setItem("lazyenv_lang", chosen);
         window.LazyEnvI18n.setLocale(chosen);
     });
 
-    window.addEventListener("lazyenv:localeChanged", function () {
+    window.addEventListener("lazyenv:localeChanged", function (e) {
+        if (e && e.detail && e.detail.locale) { currentLanguage = e.detail.locale; } else if (window.LazyEnvI18n) { currentLanguage = window.LazyEnvI18n.getLocale(); }
         t = window.LazyEnvI18n.t;
         renderEnvironments(document.getElementById("homeSearch") ? document.getElementById("homeSearch").value : "");
         if (currentPage === "updates") {
@@ -1861,7 +1866,7 @@
     // Updates Hub Logic & UI
     // -----------------------------------------------------------------------
     function updateSidebarBadge() {
-        var unpinnedCount = 0;
+        unpinnedCount = 0;
         var counts = { all: 0, winget: 0, scoop: 0, npm: 0, pip: 0, pinned: 0 };
 
         hubUpdates.forEach(function (u) {
@@ -2928,9 +2933,6 @@
         }
     }, 200);
 
-})();
-
-
     // -----------------------------------------------------------------------
     // Settings Sub-Tabs & Preferences
     // -----------------------------------------------------------------------
@@ -2990,3 +2992,5 @@
             localStorage.setItem("lazyenv_startup_updates", chkStartup.checked ? "1" : "0");
         });
     }
+
+})();
