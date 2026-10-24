@@ -8,6 +8,8 @@
   <img src="https://img.shields.io/badge/C%2B%2B-23-blue?style=flat-square&logo=c%2B%2B" alt="C++23" />
   <img src="https://img.shields.io/badge/UI-WebView2%20%7C%20Fluent-success?style=flat-square" alt="UI" />
   <img src="https://img.shields.io/badge/License-GPL--3.0-green?style=flat-square" alt="License" />
+  <a href="https://github.com/deepseek-ai/deepseek-harness"><img src="https://img.shields.io/badge/powered_by-dsh-4D6BFE?style=flat-square&logo=deepseek&logoColor=white" alt="powered by dsh" /></a>
+  <a href="https://github.com/openai"><img src="https://img.shields.io/badge/built_with-Codex-000000?style=flat-square&logo=openai&logoColor=white" alt="built with Codex" /></a>
 </p>
 
 **Developer-centric out-of-the-box environment manager, high-speed mirror switcher, and multi-source update hub.**
@@ -102,8 +104,9 @@ Special thanks to everyone contributing to LazyEnv! Issues and Pull Requests are
 
 - [@vjiaoziv](https://github.com/vjiaoziv) - Project Maintainer & Core Developer
 - [@ListerOvO1211](https://github.com/ListerOvO1211) - Core Contributor
-- **DSH (DeepSeek Harness)** - Quality Assurance, Defect Discovery & Architectural Audit
-- **Codex (OpenAI)** - Implementation & Engineering Co-developer
+
+[![](https://img.shields.io/badge/powered_by-dsh-4D6BFE?style=flat-square&logo=deepseek&logoColor=white)](https://github.com/deepseek-ai/deepseek-harness)
+[![](https://img.shields.io/badge/built_with-Codex-000000?style=flat-square&logo=openai&logoColor=white)](https://github.com/openai)
 
 ---
 

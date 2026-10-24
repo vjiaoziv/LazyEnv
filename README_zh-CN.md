@@ -8,6 +8,8 @@
   <img src="https://img.shields.io/badge/C%2B%2B-23-blue?style=flat-square&logo=c%2B%2B" alt="C++23" />
   <img src="https://img.shields.io/badge/UI-WebView2%20%7C%20Fluent-success?style=flat-square" alt="UI" />
   <img src="https://img.shields.io/badge/License-GPL--3.0-green?style=flat-square" alt="License" />
+  <a href="https://github.com/deepseek-ai/deepseek-harness"><img src="https://img.shields.io/badge/powered_by-dsh-4D6BFE?style=flat-square&logo=deepseek&logoColor=white" alt="powered by dsh" /></a>
+  <a href="https://github.com/openai"><img src="https://img.shields.io/badge/built_with-Codex-000000?style=flat-square&logo=openai&logoColor=white" alt="built with Codex" /></a>
 </p>
 
 **专为开发者打造的开箱即用开发环境管家、极速换源与多源更新中心。**
@@ -135,8 +137,9 @@ cmake --build build --config Release
 
 - [@vjiaoziv](https://github.com/vjiaoziv) - 项目维护者与核心开发者
 - [@ListerOvO1211](https://github.com/ListerOvO1211) - 核心贡献者
-- **DSH (DeepSeek Harness)** - 质量审计、缺陷定位与架构治理
-- **Codex (OpenAI)** - 核心工程实现与协同开发
+
+[![](https://img.shields.io/badge/powered_by-dsh-4D6BFE?style=flat-square&logo=deepseek&logoColor=white)](https://github.com/deepseek-ai/deepseek-harness)
+[![](https://img.shields.io/badge/built_with-Codex-000000?style=flat-square&logo=openai&logoColor=white)](https://github.com/openai)
 
 ---
 
