@@ -247,7 +247,7 @@ EnvironmentRecipe RecipeManager::createRecipeFromCurrentState(
     r.metadata.description    = desc.empty() ? "Exported from LazyEnv" : desc;
     r.metadata.author         = author.empty() ? "LazyEnv User" : author;
 #ifndef LAZYENV_VERSION_STRING
-#define LAZYENV_VERSION_STRING "0.8.4"
+#define LAZYENV_VERSION_STRING "0.8.5"
 #endif
 
     r.metadata.createdAt      = getIsoTimestamp();

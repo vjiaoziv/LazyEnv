@@ -827,6 +827,8 @@ std::string handleWebMessage(const std::string& message) {
                    << "\"success\":" << (res.success ? "true" : "false") << ","
                    << "\"userCleaned\":" << (res.userCleaned ? "true" : "false") << ","
                    << "\"systemCleaned\":" << (res.systemCleaned ? "true" : "false") << ","
+                   << "\"deadRemoved\":" << res.deadRemoved << ","
+                   << "\"dupRemoved\":" << res.dupRemoved << ","
                    << "\"systemRequiresElevation\":" << (res.systemRequiresElevation ? "true" : "false") << ","
                    << "\"snapshotId\":\"" << jsonEscape(res.snapshotId) << "\"}";
                 g_webview.postMessage(os.str());

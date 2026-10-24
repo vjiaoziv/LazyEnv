@@ -3,7 +3,7 @@
 [English](README.md) | **中文**
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Release-v0.8.4-0078D4?style=flat-square" alt="Release" />
+  <img src="https://img.shields.io/badge/Release-v0.8.5-0078D4?style=flat-square" alt="Release" />
   <img src="https://img.shields.io/badge/Platform-Windows%2010%20%7C%2011-0078D4?style=flat-square&logo=windows" alt="Platform" />
   <img src="https://img.shields.io/badge/C%2B%2B-23-blue?style=flat-square&logo=c%2B%2B" alt="C++23" />
   <img src="https://img.shields.io/badge/UI-WebView2%20%7C%20Fluent-success?style=flat-square" alt="UI" />
@@ -36,7 +36,7 @@ LazyEnv 是一款针对 Windows 平台深度定制的现代化开发环境配置
 
 ---
 
-> 🗺️ **路线图**：分阶段更新计划（v0.8.4 → v0.9 → v1.0）见 [docs/ROADMAP.md](docs/ROADMAP.md)。
+> 🗺️ **路线图**：分阶段更新计划（v0.8.5 → v0.9 → v1.0）见 [docs/ROADMAP.md](docs/ROADMAP.md)。
 
 ## 核心功能矩阵
 

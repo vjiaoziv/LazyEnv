@@ -56,6 +56,8 @@ struct AutoCleanResult {
     bool        userCleaned             = false;
     bool        systemCleaned           = false;
     bool        systemRequiresElevation = false;
+    int         deadRemoved             = 0;
+    int         dupRemoved              = 0;
     std::string snapshotId;
 };
 

@@ -226,52 +226,102 @@ PathDoctorReport PathDoctor::diagnose() {
 AutoCleanResult PathDoctor::autoClean(bool cleanUser, bool cleanSystem, RollbackManager& rollback) {
     AutoCleanResult result;
 
-    // 1. Mandatory snapshot protection before modifying PATH
+    std::string sysRaw  = RollbackManager::readEnvVariable("Path", true);
+    std::string userRaw = RollbackManager::readEnvVariable("Path", false);
+
+    auto sysTokens  = splitPath(sysRaw);
+    auto userTokens = splitPath(userRaw);
+
+    std::unordered_set<std::string> seenSystemPaths;
+    std::string newSysPath;
+    int sysDead = 0;
+    int sysDup  = 0;
+
+    // 1. Deduplicate & validate System PATH
+    for (const auto& token : sysTokens) {
+        std::string exp = expandPath(token);
+        if (!directoryExists(exp)) {
+            sysDead++;
+        } else {
+            std::string norm = normalizePath(exp);
+            if (seenSystemPaths.find(norm) == seenSystemPaths.end()) {
+                seenSystemPaths.insert(norm);
+                if (!newSysPath.empty() && newSysPath.back() != ';') newSysPath += ';';
+                newSysPath += token;
+            } else {
+                sysDup++;
+            }
+        }
+    }
+
+    // 2. Deduplicate User PATH against System PATH baseline (Cross-scope deduplication)
+    // Any directory already present in System PATH is redundant in User PATH!
+    std::unordered_set<std::string> seenUserPaths = seenSystemPaths;
+    std::string newUserPath;
+    int userDead = 0;
+    int userDup  = 0;
+
+    for (const auto& token : userTokens) {
+        std::string exp = expandPath(token);
+        if (!directoryExists(exp)) {
+            userDead++;
+        } else {
+            std::string norm = normalizePath(exp);
+            if (seenUserPaths.find(norm) == seenUserPaths.end()) {
+                seenUserPaths.insert(norm);
+                if (!newUserPath.empty() && newUserPath.back() != ';') newUserPath += ';';
+                newUserPath += token;
+            } else {
+                userDup++;
+            }
+        }
+    }
+
+    bool sysChanged  = (newSysPath != sysRaw);
+    bool userChanged = (newUserPath != userRaw);
+
+    // If nothing needs cleaning, return early without creating empty snapshots
+    if (!sysChanged && !userChanged) {
+        result.success = true;
+        result.userCleaned = false;
+        result.systemCleaned = false;
+        result.deadRemoved = 0;
+        result.dupRemoved = 0;
+        return result;
+    }
+
+    // Mandatory snapshot protection before modifying PATH
     try {
         result.snapshotId = rollback.createSnapshot("PATH Doctor: Auto-clean dead & duplicate entries");
     } catch (...) {
         result.snapshotId = "";
     }
 
-    auto cleanScope = [](bool isSys) -> bool {
-        std::string raw = RollbackManager::readEnvVariable("Path", isSys);
-        auto tokens = splitPath(raw);
-        std::unordered_set<std::string> seen;
-        std::string newPath;
-
-        for (const auto& token : tokens) {
-            std::string exp = expandPath(token);
-            if (directoryExists(exp)) {
-                std::string norm = normalizePath(exp);
-                if (seen.find(norm) == seen.end()) {
-                    seen.insert(norm);
-                    if (!newPath.empty() && newPath.back() != ';') newPath += ';';
-                    newPath += token;
-                }
-            }
-        }
-
-        return RollbackManager::writeEnvVariable("Path", newPath, REG_EXPAND_SZ, isSys);
-    };
-
-    if (cleanUser) {
-        result.userCleaned = cleanScope(false);
-    }
-
-    if (cleanSystem) {
+    if (cleanSystem && sysChanged) {
         if (!isProcessElevated()) {
             result.systemRequiresElevation = true;
             result.systemCleaned = false;
         } else {
-            result.systemCleaned = cleanScope(true);
-            if (!result.systemCleaned) {
+            result.systemCleaned = RollbackManager::writeEnvVariable("Path", newSysPath, REG_EXPAND_SZ, true);
+            if (result.systemCleaned) {
+                result.deadRemoved += sysDead;
+                result.dupRemoved  += sysDup;
+            } else {
                 result.systemRequiresElevation = true;
             }
         }
     }
 
-    // Success if user scope was successfully cleaned
-    result.success = result.userCleaned || (cleanSystem && result.systemCleaned);
+    if (cleanUser && userChanged) {
+        result.userCleaned = RollbackManager::writeEnvVariable("Path", newUserPath, REG_EXPAND_SZ, false);
+        if (result.userCleaned) {
+            result.deadRemoved += userDead;
+            result.dupRemoved  += userDup;
+        }
+    }
+
+    result.success = (userChanged ? result.userCleaned : true) &&
+                     ((cleanSystem && sysChanged) ? result.systemCleaned : true);
 
     if (result.userCleaned || result.systemCleaned) {
         RollbackManager::broadcastEnvironmentChange();

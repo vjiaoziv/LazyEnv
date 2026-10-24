@@ -180,13 +180,16 @@
 
             case "pathDoctorCleanResult":
                 if (d.success) {
-                    if (d.systemRequiresElevation && !d.systemCleaned) {
+                    var totalFixed = (d.deadRemoved || 0) + (d.dupRemoved || 0);
+                    if (totalFixed === 0 && !d.userCleaned && !d.systemCleaned) {
+                        showToast(t("doctor.cleanNoneNeeded") || "PATH 环境变量已处于最佳状态，未检测到冗余死链或重复项。", "info");
+                    } else if (d.systemRequiresElevation && !d.systemCleaned) {
                         showToast(t("doctor.partialCleanSuccess"), "warning");
                     } else {
-                        showToast(t("doctor.cleanSuccess", (pathDoctorReport ? pathDoctorReport.deadEntries + pathDoctorReport.duplicateEntries : 0)), "success");
+                        showToast(t("doctor.cleanSuccess", totalFixed), "success");
                     }
                     loadEnvVars();
-                    sendNative({ action: "pathDoctorDiagnose" });
+                    sendNative({ action: "inspectPathDoctor" });
                 } else {
                     showToast(t("toast.cleanPathFailed"), "error");
                 }
@@ -808,11 +811,12 @@
                 if (pDesc) pDesc.textContent = t("install.desc");
             }
         }
+        if (page === "doctor") {
+            if (!pathDoctorReport) sendNative({ action: "inspectPathDoctor" });
+        }
         if (page === "settings") {
             if (currentSettingsSubTab === "envvars") {
                 loadEnvVars();
-            } else if (currentSettingsSubTab === "doctor") {
-                if (!pathDoctorReport) sendNative({ action: "inspectPathDoctor" });
             }
         }
         if (page === "recipes") renderFeaturedRecipes();
@@ -2546,7 +2550,7 @@
     var cardDoc = document.getElementById("cardHomeDoctor");
     if (cardDoc) {
         cardDoc.addEventListener("click", function () {
-            navigateTo("settings");
+            navigateTo("doctor");
             sendNative({ action: "inspectPathDoctor" });
         });
     }
@@ -3207,7 +3211,7 @@
     // -----------------------------------------------------------------------
     // Settings Sub-Tabs & Preferences
     // -----------------------------------------------------------------------
-    var currentSettingsSubTab = "doctor";
+    var currentSettingsSubTab = "envvars";
     var settingsTabs = document.getElementById("settingsSubTabs");
     if (settingsTabs) {
         settingsTabs.addEventListener("click", function (e) {
@@ -3226,9 +3230,7 @@
             var activePane = document.getElementById("subtab-" + currentSettingsSubTab);
             if (activePane) activePane.style.display = "block";
 
-            if (currentSettingsSubTab === "doctor" && !pathDoctorReport) {
-                sendNative({ action: "inspectPathDoctor" });
-            } else if (currentSettingsSubTab === "envvars") {
+            if (currentSettingsSubTab === "envvars") {
                 loadEnvVars();
             }
         });
