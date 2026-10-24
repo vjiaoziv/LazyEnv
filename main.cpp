@@ -170,19 +170,47 @@ std::vector<std::string> extractJsonArray(const std::string& json,
     std::string needle = "\"" + key + "\"";
     auto pos = json.find(needle);
     if (pos == std::string::npos) return result;
+
+    pos = json.find(':', pos + needle.size());
+    if (pos == std::string::npos) return result;
+
     pos = json.find('[', pos);
     if (pos == std::string::npos) return result;
-    auto end = json.find(']', pos);
-    if (end == std::string::npos) return result;
-    std::string arr = json.substr(pos + 1, end - pos - 1);
-    size_t i = 0;
-    while (i < arr.size()) {
-        auto q1 = arr.find('\"', i);
-        if (q1 == std::string::npos) break;
-        auto q2 = arr.find('\"', q1 + 1);
-        if (q2 == std::string::npos) break;
-        result.push_back(arr.substr(q1 + 1, q2 - q1 - 1));
-        i = q2 + 1;
+
+    bool inString = false;
+    std::string current;
+    for (size_t i = pos + 1; i < json.size(); ++i) {
+        char c = json[i];
+        if (inString) {
+            if (c == '\\' && i + 1 < json.size()) {
+                ++i;
+                char next = json[i];
+                switch (next) {
+                    case '\"': current += '\"'; break;
+                    case '\\': current += '\\'; break;
+                    case '/':  current += '/';  break;
+                    case 'b':  current += '\b'; break;
+                    case 'f':  current += '\f'; break;
+                    case 'n':  current += '\n'; break;
+                    case 'r':  current += '\r'; break;
+                    case 't':  current += '\t'; break;
+                    default:   current += next; break;
+                }
+            } else if (c == '\"') {
+                inString = false;
+                result.push_back(current);
+                current.clear();
+            } else {
+                current += c;
+            }
+        } else {
+            if (c == '\"') {
+                inString = true;
+                current.clear();
+            } else if (c == ']') {
+                break;
+            }
+        }
     }
     return result;
 }
@@ -513,7 +541,7 @@ std::string handleWebMessage(const std::string& message) {
     }
 
     // ------ Detect installed environments ------
-    if (action == "detectEnvironments") {
+    if (action == "detectEnvironments" || action == "getInstalledEnvironments") {
         std::thread([]() {
             try {
                 std::string envJson = detectInstalledEnvironments();
@@ -1734,10 +1762,13 @@ std::string handleWebMessage(const std::string& message) {
             ? L"SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment"
             : L"Environment";
 
-        // Convert name to wide
-        int wl = MultiByteToWideChar(CP_UTF8, 0, name.c_str(), -1, nullptr, 0);
-        std::wstring wname(wl - 1, L'\0');
-        MultiByteToWideChar(CP_UTF8, 0, name.c_str(), -1, wname.data(), wl);
+        // Convert name to wide safely
+        std::wstring wname = utf8ToWide(name);
+        if (wname.empty()) {
+            return std::format(
+                "{{\"action\":\"envVarDeleteResult\",\"success\":false,\"name\":\"{}\"}}",
+                jsonEscape(name));
+        }
 
         HKEY hKey = nullptr;
         LONG rc = RegOpenKeyExW(root, subKey, 0, KEY_SET_VALUE, &hKey);

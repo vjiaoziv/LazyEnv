@@ -439,38 +439,99 @@ InstallResult Installer::upgradeEnvironment(const std::string& command,
 static std::string normalizeDirForCompare(std::string s) {
     while (!s.empty() && (s.front() == ' ' || s.front() == '"')) s.erase(s.begin());
     while (!s.empty() && (s.back() == '\\' || s.back() == '/' || s.back() == ' ' || s.back() == '"')) s.pop_back();
-    std::transform(s.begin(), s.end(), s.begin(),
-                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    for (char& c : s) {
+        if (c == '/') c = '\\';
+        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    }
     return s;
 }
 
+static std::string expandEnvString(const std::string& input) {
+    if (input.find('%') == std::string::npos) return input;
+    int wlen = MultiByteToWideChar(CP_UTF8, 0, input.data(), static_cast<int>(input.size()), nullptr, 0);
+    if (wlen <= 0) return input;
+    std::wstring wInput(wlen, L'\0');
+    MultiByteToWideChar(CP_UTF8, 0, input.data(), static_cast<int>(input.size()), wInput.data(), wlen);
+
+    DWORD reqLen = ExpandEnvironmentStringsW(wInput.c_str(), nullptr, 0);
+    if (reqLen == 0) return input;
+    std::wstring wOutput(reqLen, L'\0');
+    ExpandEnvironmentStringsW(wInput.c_str(), wOutput.data(), reqLen);
+    while (!wOutput.empty() && wOutput.back() == L'\0') {
+        wOutput.pop_back();
+    }
+    int u8len = WideCharToMultiByte(CP_UTF8, 0, wOutput.data(), static_cast<int>(wOutput.size()), nullptr, 0, nullptr, nullptr);
+    if (u8len <= 0) return input;
+    std::string out(u8len, '\0');
+    WideCharToMultiByte(CP_UTF8, 0, wOutput.data(), static_cast<int>(wOutput.size()), out.data(), u8len, nullptr, nullptr);
+    return out;
+}
+
+static bool pathsMatch(const std::string& a, const std::string& b) {
+    std::string normA = normalizeDirForCompare(a);
+    std::string normB = normalizeDirForCompare(b);
+    if (normA.empty() || normB.empty()) return false;
+    if (normA == normB) return true;
+    std::string expA = normalizeDirForCompare(expandEnvString(a));
+    std::string expB = normalizeDirForCompare(expandEnvString(b));
+    return (!expA.empty() && !expB.empty() && expA == expB);
+}
+
 bool Installer::addToUserPath(const std::string& directory) {
+    if (directory.empty()) return true;
+
+    // Split input on ';' for compound paths (e.g. "C:\Python312;C:\Python312\Scripts")
+    std::vector<std::string> subDirs;
+    {
+        std::istringstream inStream(directory);
+        std::string sub;
+        while (std::getline(inStream, sub, ';')) {
+            while (!sub.empty() && (sub.front() == ' ' || sub.front() == '"')) sub.erase(sub.begin());
+            while (!sub.empty() && (sub.back() == '\\' || sub.back() == '/' || sub.back() == ' ' || sub.back() == '"')) sub.pop_back();
+            if (!sub.empty()) {
+                subDirs.push_back(sub);
+            }
+        }
+    }
+    if (subDirs.empty()) return true;
+
     std::string currentPath = RollbackManager::readEnvVariable("Path", false);
 
-    std::string normalized = directory;
-    while (!normalized.empty() && (normalized.front() == ' ' || normalized.front() == '"'))
-        normalized.erase(normalized.begin());
-    while (!normalized.empty() && (normalized.back() == '\\' || normalized.back() == '/' || normalized.back() == ' ' || normalized.back() == '"'))
-        normalized.pop_back();
-
-    if (normalized.empty()) return true;
-
-    std::string targetNorm = normalizeDirForCompare(normalized);
-
-    // Exact token matching by splitting on ';'
-    std::istringstream ss(currentPath);
-    std::string token;
-    while (std::getline(ss, token, ';')) {
-        if (normalizeDirForCompare(token) == targetNorm) {
-            return true; // Already present as an exact directory token
+    // Existing tokens from PATH
+    std::vector<std::string> existingTokens;
+    {
+        std::istringstream ss(currentPath);
+        std::string token;
+        while (std::getline(ss, token, ';')) {
+            if (!token.empty()) {
+                existingTokens.push_back(token);
+            }
         }
     }
 
-    // Append with semicolon separator
     std::string newPath = currentPath;
-    if (!newPath.empty() && newPath.back() != ';')
-        newPath += ';';
-    newPath += normalized;
+    bool addedAny = false;
+
+    for (const auto& sub : subDirs) {
+        bool alreadyPresent = false;
+        for (const auto& tok : existingTokens) {
+            if (pathsMatch(tok, sub)) {
+                alreadyPresent = true;
+                break;
+            }
+        }
+        if (!alreadyPresent) {
+            if (!newPath.empty() && newPath.back() != ';')
+                newPath += ';';
+            newPath += sub;
+            existingTokens.push_back(sub);
+            addedAny = true;
+        }
+    }
+
+    if (!addedAny) {
+        return true; // All tokens already present
+    }
 
     bool ok = RollbackManager::writeEnvVariable("Path", newPath, REG_EXPAND_SZ, false);
     if (ok)
@@ -479,26 +540,49 @@ bool Installer::addToUserPath(const std::string& directory) {
 }
 
 bool Installer::removeFromUserPath(const std::string& directory) {
+    if (directory.empty()) return true;
+
+    // Split input on ';' for compound paths
+    std::vector<std::string> targetsToRemove;
+    {
+        std::istringstream inStream(directory);
+        std::string sub;
+        while (std::getline(inStream, sub, ';')) {
+            while (!sub.empty() && (sub.front() == ' ' || sub.front() == '"')) sub.erase(sub.begin());
+            while (!sub.empty() && (sub.back() == '\\' || sub.back() == '/' || sub.back() == ' ' || sub.back() == '"')) sub.pop_back();
+            if (!sub.empty()) {
+                targetsToRemove.push_back(sub);
+            }
+        }
+    }
+    if (targetsToRemove.empty()) return true;
+
     std::string currentPath = RollbackManager::readEnvVariable("Path", false);
 
-    std::string targetNorm = normalizeDirForCompare(directory);
-    if (targetNorm.empty()) return true;
-
-    // Split by ';' and filter out exact matching tokens only
+    // Split by ';' and filter out exact matching tokens
     std::istringstream ss(currentPath);
     std::string token;
     std::string newPath;
     bool found = false;
 
     while (std::getline(ss, token, ';')) {
-        if (normalizeDirForCompare(token) == targetNorm) {
+        if (token.empty()) continue;
+
+        bool shouldRemove = false;
+        for (const auto& target : targetsToRemove) {
+            if (pathsMatch(token, target)) {
+                shouldRemove = true;
+                break;
+            }
+        }
+
+        if (shouldRemove) {
             found = true;
-            continue; // Skip the exact matching token
+            continue; // Skip the matching token
         }
-        if (!token.empty()) {
-            if (!newPath.empty()) newPath += ';';
-            newPath += token;
-        }
+
+        if (!newPath.empty()) newPath += ';';
+        newPath += token;
     }
 
     if (!found)

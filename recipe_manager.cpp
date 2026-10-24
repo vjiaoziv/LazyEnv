@@ -312,7 +312,7 @@ EnvironmentRecipe RecipeManager::createRecipeFromCurrentState(
     r.metadata.description    = desc.empty() ? "Exported from LazyEnv" : desc;
     r.metadata.author         = author.empty() ? "LazyEnv User" : author;
 #ifndef LAZYENV_VERSION_STRING
-#define LAZYENV_VERSION_STRING "0.8.11"
+#define LAZYENV_VERSION_STRING "0.8.12"
 #endif
 
     r.metadata.createdAt      = getIsoTimestamp();
@@ -452,6 +452,7 @@ bool RecipeManager::deployRecipe(
     }
 
     // 3. Install missing packages sequentially
+    auto catalog = getDefaultCatalog();
     for (const auto& p : diff.missingPackages) {
         if (onLog) onLog("[LazyEnv] Installing missing package: " + p.name + " (" + p.source + ")...");
         std::string cmd;
@@ -467,7 +468,28 @@ bool RecipeManager::deployRecipe(
         }
 
         std::string fullOut;
-        Installer::runCommandStreaming(cmd, fullOut, onLog, 600000);
+        int exitCode = Installer::runCommandStreaming(cmd, fullOut, onLog, 600000);
+        if (exitCode == 0 || fullOut.find("already installed") != std::string::npos ||
+            fullOut.find("No available upgrade") != std::string::npos) {
+            for (const auto& catPkg : catalog) {
+                bool idMatch = false;
+                if (catPkg.id.size() == p.id.size()) {
+                    idMatch = true;
+                    for (size_t i = 0; i < p.id.size(); ++i) {
+                        if (std::tolower(static_cast<unsigned char>(catPkg.id[i])) !=
+                            std::tolower(static_cast<unsigned char>(p.id[i]))) {
+                            idMatch = false;
+                            break;
+                        }
+                    }
+                }
+                if (idMatch && catPkg.addToPath && !catPkg.defaultPath.empty()) {
+                    if (onLog) onLog("[LazyEnv] Auto-injecting default PATH for " + catPkg.displayName + ": " + catPkg.defaultPath);
+                    Installer::addToUserPath(catPkg.defaultPath);
+                    break;
+                }
+            }
+        }
     }
 
     // 4. Inject Environment Variables

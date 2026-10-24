@@ -89,6 +89,8 @@
         });
     }
 
+    window.__lazyenv_handleNative = handleNative;
+
     // -----------------------------------------------------------------------
     // Native response handler
     // -----------------------------------------------------------------------
@@ -206,6 +208,10 @@
                 } else {
                     showToast(t("toast.cleanPathFailed"), "error");
                 }
+                break;
+
+            case "relaunchFailed":
+                showToast(t("doctor.relaunchFailed"), "warning");
                 break;
 
             case "mirrorSourceInfo":
@@ -508,7 +514,7 @@
     // Mock for dev (no native host)
     // -----------------------------------------------------------------------
     function handleMock(obj) {
-        if (obj.action === "detectEnvironments") {
+        if (obj.action === "detectEnvironments" || obj.action === "getInstalledEnvironments") {
             setTimeout(function () {
                 handleNative({
                     action: "environmentsDetected",
@@ -2912,12 +2918,6 @@
                                 cls: "btn--accent",
                                 handler: function () {
                                     sendNative({ action: "switchVersion", tool: tool, path: p });
-                                }
-                            }
-                        ]
-                    );
-                });
-            });
                                 }
                             }
                         ]

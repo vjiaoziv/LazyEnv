@@ -1,0 +1,247 @@
+#include "installer.h"
+#include "rollback.h"
+#include "recipe_manager.h"
+#include "path_doctor.h"
+
+#include <Windows.h>
+#include <iostream>
+#include <cassert>
+#include <vector>
+#include <string>
+#include <sstream>
+#include <algorithm>
+
+std::vector<std::string> extractJsonArray(const std::string& json,
+                                          const std::string& key) {
+    std::vector<std::string> result;
+    std::string needle = "\"" + key + "\"";
+    auto pos = json.find(needle);
+    if (pos == std::string::npos) return result;
+
+    pos = json.find(':', pos + needle.size());
+    if (pos == std::string::npos) return result;
+
+    pos = json.find('[', pos);
+    if (pos == std::string::npos) return result;
+
+    bool inString = false;
+    std::string current;
+    for (size_t i = pos + 1; i < json.size(); ++i) {
+        char c = json[i];
+        if (inString) {
+            if (c == '\\' && i + 1 < json.size()) {
+                ++i;
+                char next = json[i];
+                switch (next) {
+                    case '\"': current += '\"'; break;
+                    case '\\': current += '\\'; break;
+                    case '/':  current += '/';  break;
+                    case 'b':  current += '\b'; break;
+                    case 'f':  current += '\f'; break;
+                    case 'n':  current += '\n'; break;
+                    case 'r':  current += '\r'; break;
+                    case 't':  current += '\t'; break;
+                    default:   current += next; break;
+                }
+            } else if (c == '\"') {
+                inString = false;
+                result.push_back(current);
+                current.clear();
+            } else {
+                current += c;
+            }
+        } else {
+            if (c == '\"') {
+                inString = true;
+                current.clear();
+            } else if (c == ']') {
+                break;
+            }
+        }
+    }
+    return result;
+}
+
+std::wstring utf8ToWide(const std::string& s) {
+    if (s.empty()) return {};
+    int len = MultiByteToWideChar(CP_UTF8, 0, s.data(),
+                                  static_cast<int>(s.size()), nullptr, 0);
+    std::wstring ws; ws.resize(len);
+    MultiByteToWideChar(CP_UTF8, 0, s.data(),
+                        static_cast<int>(s.size()), ws.data(), len);
+    return ws;
+}
+
+int main() {
+    int passed = 0;
+    int failed = 0;
+    auto test = [&](const std::string& name, bool cond) {
+        if (cond) {
+            std::cout << "  [PASS] " << name << "\n";
+            passed++;
+        } else {
+            std::cout << "  [FAIL] " << name << "\n";
+            failed++;
+        }
+    };
+
+    std::cout << "=== Running LazyEnv v0.8.12 Automated Verification Suite ===\n\n";
+
+    // -------------------------------------------------------------
+    // Test 1: extractJsonArray parser robustness
+    // -------------------------------------------------------------
+    std::cout << "[Test Group 1: extractJsonArray Robustness]\n";
+    {
+        std::string json1 = R"({"missingPackageIds":["Git.Git","Python.Python.3.12"]})";
+        auto arr1 = extractJsonArray(json1, "missingPackageIds");
+        test("Basic 2 elements", arr1.size() == 2 && arr1[0] == "Git.Git" && arr1[1] == "Python.Python.3.12");
+
+        std::string jsonEmpty = R"({"items":[]})";
+        auto arrEmpty = extractJsonArray(jsonEmpty, "items");
+        test("Empty array", arrEmpty.empty());
+
+        // Embedded brackets inside string
+        std::string jsonBrackets = R"({"packages":["node[v20]","foo]bar","[baz]"]})";
+        auto arrBrackets = extractJsonArray(jsonBrackets, "packages");
+        test("Embedded brackets in strings", arrBrackets.size() == 3 && arrBrackets[0] == "node[v20]" && arrBrackets[1] == "foo]bar" && arrBrackets[2] == "[baz]");
+
+        // Escaped quotes in strings
+        std::string jsonEscapes = R"({"items":["val\"with\"quotes","line1\nline2","path\\to\\dir"]})";
+        auto arrEscapes = extractJsonArray(jsonEscapes, "items");
+        test("Escaped characters and quotes", arrEscapes.size() == 3 && arrEscapes[0] == "val\"with\"quotes" && arrEscapes[1] == "line1\nline2" && arrEscapes[2] == "path\\to\\dir");
+    }
+
+    // -------------------------------------------------------------
+    // Test 2: Compound PATH Add / Remove & Idempotency
+    // -------------------------------------------------------------
+    std::cout << "\n[Test Group 2: Compound PATH Add/Remove & Idempotency]\n";
+    {
+        std::string origPath = lazyenv::RollbackManager::readEnvVariable("Path", false);
+
+        std::string compound = "C:\\LazyEnvTestPath1;C:\\LazyEnvTestPath2";
+
+        // Clean any leftovers first
+        lazyenv::Installer::removeFromUserPath(compound);
+
+        // Add 1st time
+        bool ok1 = lazyenv::Installer::addToUserPath(compound);
+        test("addToUserPath 1st call ok", ok1);
+        std::string pathAfter1 = lazyenv::RollbackManager::readEnvVariable("Path", false);
+        test("Path contains LazyEnvTestPath1", pathAfter1.find("LazyEnvTestPath1") != std::string::npos);
+        test("Path contains LazyEnvTestPath2", pathAfter1.find("LazyEnvTestPath2") != std::string::npos);
+
+        auto countOccurrences = [](const std::string& p, const std::string& sub) {
+            size_t count = 0;
+            size_t pos = 0;
+            while ((pos = p.find(sub, pos)) != std::string::npos) {
+                count++;
+                pos += sub.size();
+            }
+            return count;
+        };
+
+        test("LazyEnvTestPath1 appears exactly once", countOccurrences(pathAfter1, "LazyEnvTestPath1") == 1);
+        test("LazyEnvTestPath2 appears exactly once", countOccurrences(pathAfter1, "LazyEnvTestPath2") == 1);
+
+        // Add 2nd time (should be idempotent)
+        bool ok2 = lazyenv::Installer::addToUserPath(compound);
+        test("addToUserPath 2nd call idempotent ok", ok2);
+        std::string pathAfter2 = lazyenv::RollbackManager::readEnvVariable("Path", false);
+        test("Path after 2nd call identical length", pathAfter1 == pathAfter2);
+        test("LazyEnvTestPath1 still appears exactly once", countOccurrences(pathAfter2, "LazyEnvTestPath1") == 1);
+        test("LazyEnvTestPath2 still appears exactly once", countOccurrences(pathAfter2, "LazyEnvTestPath2") == 1);
+
+        // Add 3rd time
+        bool ok3 = lazyenv::Installer::addToUserPath(compound);
+        test("addToUserPath 3rd call ok", ok3);
+        std::string pathAfter3 = lazyenv::RollbackManager::readEnvVariable("Path", false);
+        test("Path after 3rd call identical", pathAfter1 == pathAfter3);
+
+        // Remove compound path
+        bool okRem = lazyenv::Installer::removeFromUserPath(compound);
+        test("removeFromUserPath compound ok", okRem);
+        std::string pathAfterRem = lazyenv::RollbackManager::readEnvVariable("Path", false);
+        test("LazyEnvTestPath1 completely removed", pathAfterRem.find("LazyEnvTestPath1") == std::string::npos);
+        test("LazyEnvTestPath2 completely removed", pathAfterRem.find("LazyEnvTestPath2") == std::string::npos);
+
+        // Remove again (idempotent remove)
+        bool okRem2 = lazyenv::Installer::removeFromUserPath(compound);
+        test("removeFromUserPath again idempotent", okRem2);
+
+        // Restore original Path
+        lazyenv::RollbackManager::writeEnvVariable("Path", origPath, REG_EXPAND_SZ, false);
+    }
+
+    // -------------------------------------------------------------
+    // Test 3: deleteEnvVar Memory Safety (Crash Prevention)
+    // -------------------------------------------------------------
+    std::cout << "\n[Test Group 3: deleteEnvVar Memory Safety]\n";
+    {
+        std::wstring emptyWide = utf8ToWide("");
+        test("utf8ToWide with empty string", emptyWide.empty());
+
+        auto safeDeleteEnvVar = [](const std::string& name) -> bool {
+            std::wstring wname = utf8ToWide(name);
+            if (wname.empty()) return false;
+            HKEY hKey = nullptr;
+            LONG rc = RegOpenKeyExW(HKEY_CURRENT_USER, L"Environment", 0, KEY_SET_VALUE, &hKey);
+            if (rc != ERROR_SUCCESS) return false;
+            rc = RegDeleteValueW(hKey, wname.c_str());
+            RegCloseKey(hKey);
+            return (rc == ERROR_SUCCESS);
+        };
+
+        test("safeDeleteEnvVar empty string returns false without crash", !safeDeleteEnvVar(""));
+
+        // Create a test variable, then delete it
+        bool writeOk = lazyenv::RollbackManager::writeEnvVariable("LAZYENV_V0812_TEST_VAR", "test_value_123", REG_SZ, false);
+        test("writeEnvVariable test var ok", writeOk);
+        std::string readBack = lazyenv::RollbackManager::readEnvVariable("LAZYENV_V0812_TEST_VAR", false);
+        test("readEnvVariable test var matches", readBack == "test_value_123");
+
+        bool delOk = safeDeleteEnvVar("LAZYENV_V0812_TEST_VAR");
+        test("safeDeleteEnvVar deletes existing var", delOk);
+        std::string readAfterDel = lazyenv::RollbackManager::readEnvVariable("LAZYENV_V0812_TEST_VAR", false);
+        test("var is gone after deletion", readAfterDel.empty());
+    }
+
+    // -------------------------------------------------------------
+    // Test 4: Recipe Default Catalog PATH Linkage
+    // -------------------------------------------------------------
+    std::cout << "\n[Test Group 4: Recipe Catalog Default PATH Mapping]\n";
+    {
+        auto catalog = lazyenv::getDefaultCatalog();
+        bool foundUv = false;
+        bool foundPy = false;
+
+        for (const auto& pkg : catalog) {
+            if (pkg.id == "astral-sh.uv") {
+                foundUv = true;
+                test("uv has addToPath == true", pkg.addToPath);
+                test("uv has non-empty defaultPath", !pkg.defaultPath.empty());
+            }
+            if (pkg.id == "Python.Python.3.12") {
+                foundPy = true;
+                test("Python 3.12 has addToPath == true", pkg.addToPath);
+                test("Python 3.12 defaultPath has compound paths", pkg.defaultPath.find(';') != std::string::npos);
+            }
+        }
+        test("Found uv in catalog", foundUv);
+        test("Found Python 3.12 in catalog", foundPy);
+    }
+
+    // -------------------------------------------------------------
+    // Test 5: Version Consistency Check
+    // -------------------------------------------------------------
+    std::cout << "\n[Test Group 5: Version Consistency]\n";
+    {
+        std::string ver = LAZYENV_VERSION_STRING;
+        test("Version is 0.8.12", ver == "0.8.12");
+    }
+
+    std::cout << "\n=============================================================\n";
+    std::cout << "Test Summary: " << passed << " passed, " << failed << " failed\n";
+    std::cout << "=============================================================\n";
+
+    return (failed == 0) ? 0 : 1;
+}

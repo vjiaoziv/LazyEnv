@@ -5,7 +5,7 @@
 cmake_minimum_required(VERSION 3.24)
 
 project(LazyEnv
-    VERSION   0.8.11
+    VERSION   0.8.12
     LANGUAGES CXX
 )
 
@@ -173,6 +173,12 @@ add_custom_command(TARGET LazyEnv POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "${CMAKE_CURRENT_SOURCE_DIR}/resources/icons.js"
         "$<TARGET_FILE_DIR:LazyEnv>/resources/icons.js"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_CURRENT_SOURCE_DIR}/resources/lazyenv.ico"
+        "$<TARGET_FILE_DIR:LazyEnv>/resources/lazyenv.ico"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_CURRENT_SOURCE_DIR}/resources/lazyenv.png"
+        "$<TARGET_FILE_DIR:LazyEnv>/resources/lazyenv.png"
     # Stamp the display version in the copied index.html from project(VERSION)
     COMMAND ${CMAKE_COMMAND}
         "-DLAZYENV_VERSION=${PROJECT_VERSION}"
@@ -191,6 +197,7 @@ install(DIRECTORY resources/ DESTINATION bin/resources
     PATTERN "*.css"
     PATTERN "*.js"
     PATTERN "*.ico"
+    PATTERN "*.png"
 )
 
 # ---------------------------------------------------------------------------
@@ -203,3 +210,44 @@ message(STATUS "  Compiler:        ${CMAKE_CXX_COMPILER_ID} ${CMAKE_CXX_COMPILER
 message(STATUS "  WebView2 SDK:    ${WEBVIEW2_INCLUDE_DIR}")
 message(STATUS "  WIL:             ${WIL_INCLUDE_DIR}")
 message(STATUS "")
+
+# ---------------------------------------------------------------------------
+# Test executable
+# ---------------------------------------------------------------------------
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_v0812.cpp")
+    add_executable(test_v0812
+        tests/test_v0812.cpp
+        installer.cpp
+        rollback.cpp
+        path_doctor.cpp
+        package_manager.cpp
+        recipe_manager.cpp
+        update_manager.cpp
+    )
+    target_include_directories(test_v0812 PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${WEBVIEW2_INCLUDE_DIR}
+        ${WIL_INCLUDE_DIR}
+    )
+    target_link_libraries(test_v0812 PRIVATE
+        Shlwapi.lib
+        Ole32.lib
+        Shell32.lib
+        Advapi32.lib
+        User32.lib
+        Gdi32.lib
+        Dwmapi.lib
+        Shcore.lib
+    )
+    if(MSVC)
+        target_compile_options(test_v0812 PRIVATE /W4 /utf-8 /permissive- /Zc:__cplusplus)
+        target_compile_definitions(test_v0812 PRIVATE
+            _CRT_SECURE_NO_WARNINGS
+            NOMINMAX
+            WIN32_LEAN_AND_MEAN
+            UNICODE
+            _UNICODE
+            LAZYENV_VERSION_STRING="${PROJECT_VERSION}"
+        )
+    endif()
+endif()
