@@ -1011,9 +1011,9 @@
                     mirrorBtnHtml = '<button class="btn btn--sm btn-mirror" data-type="pip">' + esc(t("mirror.btn")) + '</button>';
                 }
 
-                var envPkgId = getPackageIdByCmd(e.command);
-                var envTagline = envPkgId ? getPackageTagline(envPkgId) : "";
-                var envDesc = envPkgId ? getPackageDescription(envPkgId) : "";
+                var cmdInfo = getCommandInfo(e.command);
+                var envTagline = cmdInfo.tagline;
+                var envDesc = cmdInfo.desc;
                 var envTagBadge = envTagline ? '<span class="tag--beginner-tip" style="font-size:10px;">' + esc(envTagline) + '</span>' : '';
 
                 html += '<div class="card-row" data-cmd="' + esc(e.command) + '" style="padding:12px 16px;">' +
@@ -1210,9 +1210,11 @@
             if (isPath && displayVal.length > 80) {
                 displayVal = displayVal.substring(0, 80) + "...";
             }
+            var envDesc = getEnvVarDescription(v.name);
             html += '<tr data-name="' + esc(v.name) + '">' +
-                '<td class="envvar-name">' + esc(v.name) +
-                (v.type === "REG_EXPAND_SZ" ? ' <span class="envvar-type">EXP</span>' : '') +
+                '<td class="envvar-name">' +
+                '<div style="font-weight:600;">' + esc(v.name) + (v.type === "REG_EXPAND_SZ" ? ' <span class="envvar-type">EXP</span>' : '') + '</div>' +
+                (envDesc ? '<div class="card-row__desc-expanded" style="font-size:11px;margin-top:2px;color:var(--text-tertiary);line-height:1.4;">' + esc(envDesc) + '</div>' : '') +
                 '</td>' +
                 '<td class="envvar-value">' + esc(displayVal) + '</td>' +
                 '<td class="envvar-actions">' +
@@ -1374,6 +1376,7 @@
                 icon: "💻",
                 title: t("syscheck.os"),
                 value: d.os || "Windows (x64)",
+                desc: t("syscheck.os.desc"),
                 status: t("syscheck.statusReady"),
                 badgeCls: "tag--winget"
             },
@@ -1381,6 +1384,7 @@
                 icon: "🛡️",
                 title: t("syscheck.privilege"),
                 value: d.isElevated ? t("syscheck.privAdmin") : t("syscheck.privUser"),
+                desc: t("syscheck.privilege.desc"),
                 status: d.isElevated ? t("syscheck.statusReady") : t("syscheck.statusWarning"),
                 badgeCls: d.isElevated ? "tag--winget" : "tag--pip"
             },
@@ -1388,6 +1392,7 @@
                 icon: "🛠️",
                 title: t("syscheck.devMode"),
                 value: d.devMode ? t("syscheck.devModeOn") : t("syscheck.devModeOff"),
+                desc: t("syscheck.devMode.desc"),
                 status: d.devMode ? t("syscheck.statusReady") : t("syscheck.statusWarning"),
                 badgeCls: d.devMode ? "tag--winget" : "tag--pip"
             },
@@ -1395,6 +1400,7 @@
                 icon: "💾",
                 title: t("syscheck.storage"),
                 value: (d.diskFree || "Unknown") + " " + t("syscheck.freeSpace"),
+                desc: t("syscheck.storage.desc"),
                 status: t("syscheck.statusReady"),
                 badgeCls: "tag--winget"
             },
@@ -1402,6 +1408,7 @@
                 icon: "📦",
                 title: t("syscheck.pkgManagers"),
                 value: "WinGet: " + (d.winget ? "✓" : "✗") + " • NPM: " + (d.npm ? "✓" : "✗") + " • Pip: " + (d.pip ? "✓" : "✗") + " • Scoop: " + (d.scoop ? "✓" : "✗"),
+                desc: t("syscheck.winget.desc"),
                 status: (d.winget && d.npm) ? t("syscheck.statusReady") : t("syscheck.statusWarning"),
                 badgeCls: (d.winget && d.npm) ? "tag--winget" : "tag--pip"
             },
@@ -1409,6 +1416,7 @@
                 icon: "🌐",
                 title: t("syscheck.webview2"),
                 value: t("check.available"),
+                desc: t("syscheck.webview2.desc"),
                 status: t("syscheck.statusReady"),
                 badgeCls: "tag--winget"
             }
@@ -1423,6 +1431,7 @@
                 '</div>' +
                 '<div class="syscheck-card__title">' + esc(c.title) + '</div>' +
                 '<div class="syscheck-card__value">' + esc(c.value) + '</div>' +
+                (c.desc ? '<div class="card-row__desc-expanded" style="font-size:11px;margin-top:6px;line-height:1.45;">' + esc(c.desc) + '</div>' : '') +
                 '</div>';
         });
         container.innerHTML = html;
@@ -1523,6 +1532,30 @@
         var key = "pkg." + pkgId + ".desc";
         var res = t(key);
         return res === key ? (fallback || "") : res;
+    }
+
+    function getCommandInfo(cmd) {
+        if (!cmd) return { tagline: "", desc: "" };
+        var c = cmd.toLowerCase().trim();
+        var cmdTagKey = "cmd." + c + ".tagline";
+        var cmdDescKey = "cmd." + c + ".desc";
+        var tagRes = t(cmdTagKey);
+        var descRes = t(cmdDescKey);
+        if (tagRes !== cmdTagKey && descRes !== cmdDescKey) {
+            return { tagline: tagRes, desc: descRes };
+        }
+        var pkgId = getPackageIdByCmd(c);
+        if (pkgId) {
+            return { tagline: getPackageTagline(pkgId), desc: getPackageDescription(pkgId) };
+        }
+        return { tagline: "", desc: "" };
+    }
+
+    function getEnvVarDescription(varName) {
+        if (!varName) return "";
+        var key = "envvar." + varName.toUpperCase().trim() + ".desc";
+        var res = t(key);
+        return res === key ? "" : res;
     }
 
     function renderCatalog(filter) {
