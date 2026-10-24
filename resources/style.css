@@ -1413,7 +1413,7 @@ textarea.input {
     background: rgba(30, 30, 30, 0.92);
     backdrop-filter: blur(20px);
     border-top: 1px solid var(--border-subtle);
-    display: flex;
+    display: none;
     justify-content: space-between;
     align-items: center;
     z-index: 100;

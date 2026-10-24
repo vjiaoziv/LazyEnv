@@ -495,8 +495,7 @@ std::string handleWebMessage(const std::string& message) {
     // ------ Updates Hub: Batch upgrade queue with detailed phase & diagnostics ------
     if (action == "upgradeBatch") {
         auto targets = parseUpgradeTargetsFromJson(message);
-        std::string interStr = extractJsonValue(message, "interactive");
-        bool interactive = (interStr == "true");
+        bool interactive = extractJsonBool(message, "interactive", false);
 
         std::thread([targets, interactive]() {
             try {
@@ -814,10 +813,8 @@ std::string handleWebMessage(const std::string& message) {
 
     // ------ PATH Doctor: Auto clean dead & duplicate entries ------
     if (action == "pathDoctorAutoClean") {
-        std::string cuStr = extractJsonValue(message, "cleanUser");
-        std::string csStr = extractJsonValue(message, "cleanSystem");
-        bool cleanUser   = (cuStr != "false");
-        bool cleanSystem = (csStr != "false");
+        bool cleanUser   = extractJsonBool(message, "cleanUser", true);
+        bool cleanSystem = extractJsonBool(message, "cleanSystem", true);
 
         std::thread([cleanUser, cleanSystem]() {
             try {
@@ -1656,8 +1653,7 @@ std::string handleWebMessage(const std::string& message) {
     // ------ Read env var ------
     if (action == "readEnv") {
         std::string name = extractJsonValue(message, "name");
-        std::string systemStr = extractJsonValue(message, "system");
-        bool sys = (systemStr == "true");
+        bool sys = extractJsonBool(message, "system", false);
         std::string val = lazyenv::RollbackManager::readEnvVariable(name, sys);
         return std::format("{{\"action\":\"envValue\",\"name\":\"{}\",\"value\":\"{}\"}}",
                            jsonEscape(name), jsonEscape(val));

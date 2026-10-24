@@ -1501,6 +1501,10 @@
         var n = selectedPackages.size;
         document.getElementById("pkgSelectedCount").textContent = t("packages.selectedCount", n);
         document.getElementById("btnStartInstall").disabled = n === 0;
+        var bar = document.getElementById("pkgStickyBar");
+        if (bar) {
+            bar.style.display = n > 0 ? "flex" : "none";
+        }
     }
 
     document.getElementById("pkgSearch").addEventListener("input", function (e) {

@@ -434,26 +434,37 @@ InstallResult Installer::upgradeEnvironment(const std::string& command,
 }
 
 // ---------------------------------------------------------------------------
-// PATH management
+// PATH management (Strict Token Matching - No Substring Collisions)
 // ---------------------------------------------------------------------------
+static std::string normalizeDirForCompare(std::string s) {
+    while (!s.empty() && (s.front() == ' ' || s.front() == '"')) s.erase(s.begin());
+    while (!s.empty() && (s.back() == '\\' || s.back() == '/' || s.back() == ' ' || s.back() == '"')) s.pop_back();
+    std::transform(s.begin(), s.end(), s.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    return s;
+}
+
 bool Installer::addToUserPath(const std::string& directory) {
     std::string currentPath = RollbackManager::readEnvVariable("Path", false);
 
-    // Normalize: ensure no trailing backslash for comparison
     std::string normalized = directory;
-    while (!normalized.empty() && (normalized.back() == '\\' || normalized.back() == '/'))
+    while (!normalized.empty() && (normalized.front() == ' ' || normalized.front() == '"'))
+        normalized.erase(normalized.begin());
+    while (!normalized.empty() && (normalized.back() == '\\' || normalized.back() == '/' || normalized.back() == ' ' || normalized.back() == '"'))
         normalized.pop_back();
 
-    // Check if already present (case-insensitive)
-    std::string lowerPath = currentPath;
-    std::string lowerDir  = normalized;
-    std::transform(lowerPath.begin(), lowerPath.end(), lowerPath.begin(),
-                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-    std::transform(lowerDir.begin(), lowerDir.end(), lowerDir.begin(),
-                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    if (normalized.empty()) return true;
 
-    if (lowerPath.find(lowerDir) != std::string::npos)
-        return true; // Already in PATH
+    std::string targetNorm = normalizeDirForCompare(normalized);
+
+    // Exact token matching by splitting on ';'
+    std::istringstream ss(currentPath);
+    std::string token;
+    while (std::getline(ss, token, ';')) {
+        if (normalizeDirForCompare(token) == targetNorm) {
+            return true; // Already present as an exact directory token
+        }
+    }
 
     // Append with semicolon separator
     std::string newPath = currentPath;
@@ -470,28 +481,28 @@ bool Installer::addToUserPath(const std::string& directory) {
 bool Installer::removeFromUserPath(const std::string& directory) {
     std::string currentPath = RollbackManager::readEnvVariable("Path", false);
 
-    std::string normalized = directory;
-    while (!normalized.empty() && (normalized.back() == '\\' || normalized.back() == '/'))
-        normalized.pop_back();
+    std::string targetNorm = normalizeDirForCompare(directory);
+    if (targetNorm.empty()) return true;
 
-    // Case-insensitive removal
-    std::string lowerPath = currentPath;
-    std::string lowerDir  = normalized;
-    std::transform(lowerPath.begin(), lowerPath.end(), lowerPath.begin(),
-                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-    std::transform(lowerDir.begin(), lowerDir.end(), lowerDir.begin(),
-                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    // Split by ';' and filter out exact matching tokens only
+    std::istringstream ss(currentPath);
+    std::string token;
+    std::string newPath;
+    bool found = false;
 
-    auto pos = lowerPath.find(lowerDir);
-    if (pos == std::string::npos)
-        return true; // Not present, nothing to do
+    while (std::getline(ss, token, ';')) {
+        if (normalizeDirForCompare(token) == targetNorm) {
+            found = true;
+            continue; // Skip the exact matching token
+        }
+        if (!token.empty()) {
+            if (!newPath.empty()) newPath += ';';
+            newPath += token;
+        }
+    }
 
-    // Remove the entry and surrounding semicolons
-    size_t end = pos + normalized.size();
-    if (end < currentPath.size() && currentPath[end] == ';') ++end;
-    else if (pos > 0 && currentPath[pos - 1] == ';') --pos;
-
-    std::string newPath = currentPath.substr(0, pos) + currentPath.substr(end);
+    if (!found)
+        return true; // Not present, nothing changed
 
     bool ok = RollbackManager::writeEnvVariable("Path", newPath, REG_EXPAND_SZ, false);
     if (ok)
@@ -500,8 +511,9 @@ bool Installer::removeFromUserPath(const std::string& directory) {
 }
 
 bool Installer::isCommandAvailable(const std::string& command) {
+    if (command.empty()) return false;
     std::string output;
-    std::string cmd = "where " + command;
+    std::string cmd = (command.front() == '"') ? ("where " + command) : ("where "" + command + """);
     int rc = runCommand(cmd, output, 5000);
     return rc == 0 && !output.empty();
 }

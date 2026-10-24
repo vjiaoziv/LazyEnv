@@ -141,15 +141,41 @@ std::string RecipeManager::serializeRecipeToJson(const EnvironmentRecipe& r) {
 bool RecipeManager::parseRecipeFromJson(const std::string& json, EnvironmentRecipe& r) {
     if (json.empty()) return false;
 
-    r.formatVersion           = extractJsonValue(json, "formatVersion");
-    r.metadata.name           = extractJsonValue(json, "name");
-    r.metadata.description    = extractJsonValue(json, "description");
-    r.metadata.author         = extractJsonValue(json, "author");
-    r.metadata.createdAt      = extractJsonValue(json, "createdAt");
-    r.metadata.lazyenvVersion = extractJsonValue(json, "lazyenvVersion");
+    r.formatVersion = extractJsonValue(json, "formatVersion");
+    if (r.formatVersion.empty()) r.formatVersion = "1.0";
 
-    r.mirrors.npm = extractJsonValue(json, "npm");
-    r.mirrors.pip = extractJsonValue(json, "pip");
+    // Scope isolation: extract from "metadata" block to prevent collision with packages
+    std::string metaBlock = json;
+    auto metaPos = json.find("\"metadata\"");
+    if (metaPos != std::string::npos) {
+        auto mOpen = json.find('{', metaPos);
+        if (mOpen != std::string::npos) {
+            auto mClose = json.find('}', mOpen);
+            if (mClose != std::string::npos) {
+                metaBlock = json.substr(mOpen, mClose - mOpen + 1);
+            }
+        }
+    }
+    r.metadata.name           = extractJsonValue(metaBlock, "name");
+    r.metadata.description    = extractJsonValue(metaBlock, "description");
+    r.metadata.author         = extractJsonValue(metaBlock, "author");
+    r.metadata.createdAt      = extractJsonValue(metaBlock, "createdAt");
+    r.metadata.lazyenvVersion = extractJsonValue(metaBlock, "lazyenvVersion");
+
+    // Scope isolation: extract from "mirrors" block
+    std::string mirrorBlock = json;
+    auto mirPos = json.find("\"mirrors\"");
+    if (mirPos != std::string::npos) {
+        auto mirOpen = json.find('{', mirPos);
+        if (mirOpen != std::string::npos) {
+            auto mirClose = json.find('}', mirOpen);
+            if (mirClose != std::string::npos) {
+                mirrorBlock = json.substr(mirOpen, mirClose - mirOpen + 1);
+            }
+        }
+    }
+    r.mirrors.npm = extractJsonValue(mirrorBlock, "npm");
+    r.mirrors.pip = extractJsonValue(mirrorBlock, "pip");
 
     // Parse packages
     auto pkgPos = json.find("\"packages\"");
@@ -247,7 +273,7 @@ EnvironmentRecipe RecipeManager::createRecipeFromCurrentState(
     r.metadata.description    = desc.empty() ? "Exported from LazyEnv" : desc;
     r.metadata.author         = author.empty() ? "LazyEnv User" : author;
 #ifndef LAZYENV_VERSION_STRING
-#define LAZYENV_VERSION_STRING "0.8.5"
+#define LAZYENV_VERSION_STRING "0.8.6"
 #endif
 
     r.metadata.createdAt      = getIsoTimestamp();
