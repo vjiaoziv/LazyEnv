@@ -1,11 +1,31 @@
-# LazyEnv 更新路线图 (Roadmap)
+# LazyEnv 下一阶段技术演进与深度更新规划 (v0.9.0 → v1.0.0)
 
-> 依据项目技术演进、同类项目横向对标（UniGetUI, mise, RapidEE）与 Windows 开发者实际工程痛点制定。
+> 依据 2026 最新行业调研（UniGetUI 最新演进、Dev Home 战略调整、mise 原生体验对比）、同类项目横向格局分析与 Windows 开发者真实工程痛点制定。
 > 各阶段独立实施、独立验收，版本严格遵循语义化版本规范 (SemVer)。
 
 ---
 
-## 一、当前已达成基线 (Completed Milestones)
+## 一、深度调研洞察与战略定位 (Research Insights & Strategic Positioning)
+
+### 1.1 业界竞品横向调研事实
+通过对 GitHub 官方仓库、Release 动态与开发者社区反馈的实证调研，当前 Windows 开发环境管理格局如下：
+1. **UniGetUI (v2026.3.2 现状)**：
+   - 近期演进重心为 TUI 终端模式、自定义软件目录（Catalog Editor）以及定时维护任务；
+   - 核心定位仍为“通用 GUI 软件商店”，包罗万象但缺乏对“开发环境深层治理（如 PATH 冲突遮蔽、镜像加速、项目级版本切换）”的专业支持。
+2. **Microsoft Dev Home (现状)**：
+   - 微软官方在 2025 年已明确将 Dev Home 调整为慢速维护与部分废弃（Deprecation），基于 WinGet DSC 的 YAML 环境配置过于厚重复杂，且依赖重型 UWP/AppSDK 框架与 Windows 商店服务；
+   - 开发者普遍呼唤**轻量（<10MB）、便携（Portable）、免安装无污染、专注核心痛点**的纯原生桌面利器。
+3. **mise / asdf (现状)**：
+   - Unix 世界主流环境管家，Windows 端虽逐步支持但依赖复杂的 Shim 垫片代理，对 Windows 全局注册表和系统级 GUI 软件治理无能为力。
+
+### 1.2 LazyEnv 的差异化护城河
+LazyEnv 坚决不盲目跟风做“大而全的应用商店套壳”，而是锁定 **“Windows 开发者环境治理与版本调度中枢”**：
+- **v0.8.x 已经攻克**：36 款精选工具、10 大场景配方、PATH Doctor 一级健康体检、全量官方权威双语知识库。
+- **v0.9.0 核心突破**：**应用内原生自更新引擎**（彻底消除手动下载解压覆盖）与 **多版本共存一键切换引擎**（从“只检测冲突”跃升为“动态调度主版本”）。
+
+---
+
+## 二、当前已达成基线 (Completed Milestones)
 
 | 阶段 / 版本 | 核心里程碑 | 交付状态 |
 |---|---|---|
@@ -17,45 +37,74 @@
 
 ---
 
-## 二、后续演进阶段规划 (Future Phases)
+## 三、分阶段实施路线图 (Phased Implementation Plan)
 
-### 阶段 1 — 内置自更新与多渠道分发 (v0.9.0)
-- **应用内原生自更新 (`self_updater` 模块)**：
-  - 基于系统原生 WinHTTP 请求 GitHub `releases/latest` API（零新增第三方网络依赖，带镜像加速回退）；
-  - 自动 SemVer 比对 → 增量下载 zip → 基于 Windows BCrypt 库进行 SHA-256 完整性校验；
-  - 旁路替换式重启更新（复用 `0x80070020` 文件占用诊断与重试机制）；
-  - 设置页增加【检查软件新版本】交互入口，双语即时响应。
-- **生态分发渠道铺设**：
-  - 维护独立的 Scoop bucket 清单（轻量、即时发布）；
-  - 向官方 `microsoft/winget-pkgs` 仓库提交清单，支持 `winget install LazyEnv`。
+### 阶段 1 — 核心突破：应用原生自更新与多版本切换引擎 (v0.9.0)
 
-### 阶段 2 — 深度环境治理与导出中心 (v0.9.x)
-- **命令冲突深度语义消除**：
-  - 智能感知 Scoop shims、WinGet 软链接与 WindowsApps 0KB 别名的劫持行为；
-  - 提供【一键禁用微软商店 Python 别名】与【指定主版本优先置顶】快捷向导；
-- **健康体检报告导出**：
-  - 支持将 PATH Doctor 审计结果导出为 Markdown / HTML 格式报告，方便团队诊断；
-- **环境配置多档案切换 (Profiles)**：
-  - 支持保存“前端开发”、“深度学习”、“考研竞赛”等多套独立的 PATH 与环境变量配置档案，一键秒切。
+#### 1. 纯原生 WinHTTP 自更新引擎 (`self_updater.cpp/h`)
+- **零外部依赖的 WinHTTP 客户端**：
+  - 调用 Windows 原生 `winhttp.dll`，异步请求 `https://api.github.com/repos/vjiaoziv/LazyEnv/releases/latest`；
+  - 内置国内加速代理自动重试机制（主源失败时自动回退备用镜像地址）。
+- **版本比对与哈希强校验**：
+  - 严格按照语义化版本（SemVer）比对当前版本与远程最新 tag；
+  - 下载 Release 的 zip 包，调用 Windows 原生 `Bcrypt.dll` 计算 SHA-256 哈希值，与 Release 中的 `SHA256SUMS.txt` 校验，防篡改防损坏。
+- **旁路优雅替换机制（解决 Windows 文件锁占用）**：
+  - 生成轻量级自解构批处理/独立 helper 进程：等待主进程安全退出（检测 PID）后，原子化解压替换 `LazyEnv.exe` 与 `resources/` 目录，并重新拉起新版应用。
+- **UI 交互集成**：
+  - 设置页【关于】区增加【检查新版本】交互按钮、更新日志 Markdown 弹窗与下载进度条；支持“启动时静默检查更新”开关。
 
-### 阶段 3 — 声明式配方 1.1 与 CLI 无头模式 (v1.0.0)
-- **`.lazyenv` 声明式格式升级 (Format Version 1.1)**：
-  - 新增 `osSettings`（如开发者模式、长路径支持等系统开关声明）；
-  - 新增 `postInstall`（安装后脚本钩子），引入幂等执行校验（记录已执行 hash，避免重复运行）；
-  - 保持对 1.0 配方的向下完全兼容。
-- **无头命令行模式 (`--cli`)**：
-  - 支持 `LazyEnv.exe --cli <command> [--json]`；
-  - 提供 `check-updates`、`deploy <recipe.json>`、`doctor`、`mirror` 等子命令，输出标准 JSON，便于纳入自动化脚本与 CI 流水线；
-  - 完善配套 `docs/CLI.md` 开发者文档。
+#### 2. 多版本共存一键切换引擎 (Multi-Version Switcher)
+- **从“冲突报警”到“一键激活”**：
+  - 在 PATH Doctor 的“版本冲突与命令遮蔽 (Shadowing)”卡片中，对检测到的多个同名版本（如同时存在的 Python 3.10 与 3.12、Node 18 与 22、JDK 17 与 21），为每个被遮蔽版本增加【设为当前默认版本 (Set as Active)】按钮；
+- **原子化环境变量与路径重排**：
+  - 点击后，后台调用 `Installer::removeFromUserPath` 与 `Installer::addToUserPath`，将选定版本的路径提取并置顶至 PATH 最前端；
+  - 智能关联相关系统变量：如切换 Java 版本时同步更新 `JAVA_HOME`，切换 Go 时同步更新 `GOROOT`；
+  - 广播 `WM_SETTINGCHANGE`，新开终端即时生效，无需重启电脑。
+
+#### 3. 开发者网络辅助：Git 代理一键切换器
+- 针对 Windows 开发者 `git clone` 经常超时的痛点，在设置页集成常用的本地代理配置向导（如 127.0.0.1:7890），支持一键执行 `git config --global http.proxy` 测速与一键清除。
 
 ---
 
-## 三、已知风险与工程对策
+### 阶段 2 — 深度生态：可视化配方工作室与多档案管理 (v0.9.5)
 
-1. **无代码签名证书的误报防御**：
-   - 自更新与分发全量公示 SHA-256 哈希值与源码对应 commit，通过 GitHub Actions 全流程透明构建验证；
-   - 积极向主流安全软件提交白名单审核。
-2. **进程自身替换的文件锁问题**：
-   - 采用临时旁路批处理/更新器进程，在原主进程退出后完成文件替换并静默拉起新版本。
-3. **架构支持演进**：
-   - 现阶段保障 x64 极致稳定性，未来评估 Windows on ARM (ARM64) 原生交叉编译支持。
+1. **可视化配方设计器 (Visual Recipe Studio)**：
+   - 提供可视化界面，允许开发者自由勾选软件包、输入私有环境变量（如私有云 AK/SK、内部镜像地址）、选择配置镜像；
+   - 一键生成、验证并导出自定义 `.lazyenv` JSON 配方，支持拖拽快速分享给团队成员。
+2. **环境配置多档案快速切换 (Environment Profiles)**：
+   - 允许开发者保存当前机器的特定状态为“工作环境”（如“全栈 Web 模式”、“深度学习 AI 模式”、“考研竞赛 C++ 模式”）；
+   - 在多档案间秒级无损切换，不同任务互不干扰。
+3. **健康报告导出**：
+   - 支持将 PATH Doctor 的体检结果导出为标准 Markdown / HTML 格式报告，便于技术团队入职审计与环境排错。
+
+---
+
+### 阶段 3 — 工业级成熟：无头 CLI 模式与多渠道分发 (v1.0.0)
+
+1. **无头命令行模式 (`LazyEnv.exe --cli`)**：
+   - 支持无窗口静默执行：`LazyEnv.exe --cli doctor --json`（输出结构化体检报告）、`LazyEnv.exe --cli deploy <recipe.json>`（脚本化环境部署）；
+   - 方便纳入团队自动化装机脚本与 CI 容器构建流水线。
+2. **多渠道原生包分发**：
+   - 建立官方维护的 Scoop Bucket 清单，支持 `scoop install lazyenv`；
+   - 正式向微软官方 `microsoft/winget-pkgs` 仓库提交 PR 清单，支持 `winget install LazyEnv`。
+
+---
+
+## 四、测试与验收标准 (Test Plan & Acceptance Criteria)
+
+### 4.1 v0.9.0 自更新与多版本切换验收
+1. **自更新端到端闭环测试**：
+   - 模拟本地版本低于远程最新版，点击【检查新版本】能秒级获取 Changelog；
+   - 验证下载过程进度条平滑，BCrypt SHA-256 校验失败时严禁替换并提示报警；
+   - 验证主进程退出后，旁路进程成功完成文件覆写并正确拉起新版本，所有配置完好保留。
+2. **多版本切换实机回归**：
+   - 在已安装多版本 Python（如 3.10 与 3.12）的环境下，点击将次要版本【设为当前默认】；
+   - 验证注册表 PATH 首位成功调换，新打开终端执行 `python --version` 立即反映目标版本；
+   - 验证 Java 切换后 `JAVA_HOME` 同步指向新路径。
+
+---
+
+## 五、假设与约束 (Assumptions)
+
+- 自更新机制全量基于 Windows 原生 WinHTTP 与 BCrypt API 开发，坚决不引入庞大的第三方网络库，保持单可执行文件轻量便携架构（安装包体保持 < 5MB）。
+- 多版本切换引擎针对标准安装路径（User 与 System 注册表环境变量）实施安全原子化置顶，操作前强制创建环境快照以保障安全。
