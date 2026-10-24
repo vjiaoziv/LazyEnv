@@ -1011,11 +1011,19 @@
                     mirrorBtnHtml = '<button class="btn btn--sm btn-mirror" data-type="pip">' + esc(t("mirror.btn")) + '</button>';
                 }
 
-                html += '<div class="card-row" data-cmd="' + esc(e.command) + '">' +
-                    '<div class="card-row__icon">' + iconSvg + '</div>' +
+                var envPkgId = getPackageIdByCmd(e.command);
+                var envTagline = envPkgId ? getPackageTagline(envPkgId) : "";
+                var envDesc = envPkgId ? getPackageDescription(envPkgId) : "";
+                var envTagBadge = envTagline ? '<span class="tag--beginner-tip" style="font-size:10px;">' + esc(envTagline) + '</span>' : '';
+
+                html += '<div class="card-row" data-cmd="' + esc(e.command) + '" style="padding:12px 16px;">' +
+                    '<div class="card-row__icon" style="margin-top:2px;">' + iconSvg + '</div>' +
                     '<div class="card-row__body">' +
-                    '<div class="card-row__title">' + esc(e.name) + badgeHtml + '</div>' +
-                    '<div class="card-row__subtitle">' + esc(e.version) + '</div>' +
+                    '<div class="card-row__title" style="display:flex;align-items:center;flex-wrap:wrap;gap:4px;">' +
+                    '<span style="font-weight:600;">' + esc(e.name) + '</span>' + badgeHtml + envTagBadge +
+                    '</div>' +
+                    '<div class="card-row__subtitle text-accent" style="font-family:monospace;font-size:11px;">' + esc(e.version) + '</div>' +
+                    (envDesc ? '<div class="card-row__desc-expanded" style="font-size:11px;margin-top:3px;">' + esc(envDesc) + '</div>' : '') +
                     '</div>' +
                     '<div class="card-row__actions">' +
                     mirrorBtnHtml +
@@ -1493,6 +1501,30 @@
         });
     }
 
+    function getPackageIdByCmd(cmd) {
+        if (!cmd) return null;
+        var c = cmd.toLowerCase().trim();
+        for (var pkgId in kPackageCommandMap) {
+            var cmds = kPackageCommandMap[pkgId];
+            if (cmds && cmds.some(function (x) { return x.toLowerCase() === c; })) return pkgId;
+        }
+        return null;
+    }
+
+    function getPackageTagline(pkgId) {
+        if (!pkgId) return "";
+        var key = "pkg." + pkgId + ".tagline";
+        var res = t(key);
+        return res === key ? "" : res;
+    }
+
+    function getPackageDescription(pkgId, fallback) {
+        if (!pkgId) return fallback || "";
+        var key = "pkg." + pkgId + ".desc";
+        var res = t(key);
+        return res === key ? (fallback || "") : res;
+    }
+
     function renderCatalog(filter) {
         var container = document.getElementById("packageList");
         var pkgs = catalog;
@@ -1500,7 +1532,9 @@
         if (filter) {
             var f = filter.toLowerCase();
             pkgs = pkgs.filter(function (p) {
-                return p.name.toLowerCase().includes(f) || p.id.toLowerCase().includes(f) || p.category.toLowerCase().includes(f);
+                var desc = (getPackageDescription(p.id, p.description) || "").toLowerCase();
+                var tag = (getPackageTagline(p.id) || "").toLowerCase();
+                return p.name.toLowerCase().includes(f) || p.id.toLowerCase().includes(f) || p.category.toLowerCase().includes(f) || desc.includes(f) || tag.includes(f);
             });
         }
 
@@ -1521,14 +1555,17 @@
                 var iconSvg = window.LazyEnvIcons.getIcon(p.id || p.name, p.category);
                 var isInstalled = isPackageInstalled(p);
                 var instBadge = isInstalled ? ' <span class="badge--source" style="background:rgba(255,255,255,0.06);color:var(--text-tertiary);margin-left:6px;font-size:10px;">' + esc(t("common.installed")) + '</span>' : '';
+                var tagline = getPackageTagline(p.id);
+                var descText = getPackageDescription(p.id, p.description);
                 html += '<div class="card-row card-row--selectable' + (sel ? ' card-row--selected' : '') + '" data-id="' + esc(p.id) + '">' +
                     '<div class="card-row__check">' +
                     '<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M13.854 3.646a.5.5 0 0 1 0 .708l-7 7a.5.5 0 0 1-.708 0l-3.5-3.5a.5.5 0 1 1 .708-.708L6.5 10.293l6.646-6.647a.5.5 0 0 1 .708 0z"/></svg>' +
                     '</div>' +
                     '<div class="card-row__icon">' + iconSvg + '</div>' +
                     '<div class="card-row__body">' +
-                    '<div class="card-row__title">' + esc(p.name) + instBadge + '</div>' +
-                    '<div class="card-row__subtitle">' + esc(p.description) + '</div>' +
+                    '<div class="card-row__title" style="display:flex;align-items:center;flex-wrap:wrap;gap:4px;">' +
+                    '<span style="font-weight:600;">' + esc(p.name) + '</span>' + instBadge + (tagline ? ' <span class="tag--beginner-tip">' + esc(tagline) + '</span>' : '') + '</div>' +
+                    '<div class="card-row__desc-expanded">' + esc(descText) + '</div>' +
                     '</div></div>';
             });
             html += '</div>';
@@ -2075,15 +2112,21 @@
             var isSel = selectedHubUpdateIds.has(it.id);
             var srcClass = "tag--" + esc(it.source.toLowerCase());
             var iconSvg = window.LazyEnvIcons ? window.LazyEnvIcons.getIcon(it.name || it.id, "tool", it.source) : "";
-
+            var upPkgId = it.id || getPackageIdByCmd(it.name || it.id);
+            var upTagline = upPkgId ? getPackageTagline(upPkgId) : "";
+            var upDesc = upPkgId ? getPackageDescription(upPkgId) : "";
+            var upTagBadge = upTagline ? '<span class="tag--beginner-tip" style="font-size:10px;">' + esc(upTagline) + '</span>' : '';
             html += '<div class="card-row card-row--selectable ' + (isSel ? 'card-row--selected' : '') + '" data-id="' + esc(it.id) + '">' +
                 '<div class="card-row__check"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M12.736 3.97a.733.733 0 0 1 1.047 0c.286.289.29.756.01 1.05L7.88 12.01a.733.733 0 0 1-1.065.02L3.217 8.384a.757.757 0 0 1 0-1.06.733.733 0 0 1 1.047 0l3.052 3.093 5.4-6.425a.247.247 0 0 1 .02-.022z"/></svg></div>' +
                 '<div class="card-row__icon">' + iconSvg + '</div>' +
                 '<div class="card-row__body">' +
-                '<div class="card-row__title">' + esc(it.name) + ' <span class="badge--source ' + srcClass + '">' + esc(it.source) + '</span>' +
+                '<div class="card-row__title" style="display:flex;align-items:center;flex-wrap:wrap;gap:4px;">' +
+                '<span style="font-weight:600;">' + esc(it.name) + '</span> <span class="badge--source ' + srcClass + '">' + esc(it.source) + '</span>' +
+                upTagBadge +
                 (it.isPinned ? ' <span class="badge badge--neutral">' + esc(t("updates.pinnedHint")) + '</span>' : '') +
                 '</div>' +
                 '<div class="card-row__subtitle">' + esc(it.currentVersion) + ' &rarr; <span class="text-accent" style="font-weight:600">' + esc(it.latestVersion) + '</span></div>' +
+                (upDesc ? '<div class="card-row__desc-expanded" style="font-size:11px;margin-top:2px;">' + esc(upDesc) + '</div>' : '') +
                 '</div>' +
                 '<div class="card-row__actions">' +
                 '<button class="btn-pin ' + (it.isPinned ? 'btn-pin--active' : '') + '" data-id="' + esc(it.id) + '" data-pinned="' + (it.isPinned ? 'true' : 'false') + '">' +
@@ -3216,10 +3259,22 @@
                 html += '<div class="mt-md mb-sm" style="font-size:12px; font-weight:600; color:var(--text-primary);">' +
                         esc(t("recipes.toInstall")) + ' (' + diff.missingPackages.length + '):</div>';
                 diff.missingPackages.forEach(function (p) {
-                    html += '<div class="diag-item flex-between" style="padding:6px 10px; margin-bottom:4px;">' +
-                        '<span>' + esc(p.name || p.id) + '</span>' +
-                        '<span class="badge--source tag--' + esc((p.source || "winget").toLowerCase()) + '">Deploy</span>' +
-                        '</div>';
+                    var pkgId = p.id;
+                    var tagline = getPackageTagline(pkgId);
+                    var desc = getPackageDescription(pkgId);
+                    var iconSvg = window.LazyEnvIcons ? window.LazyEnvIcons.getIcon(pkgId || p.name, "tool", p.source) : "";
+
+                    html += '<div class="diff-pkg-card">' +
+                        '<div class="flex-between">' +
+                            '<div class="flex-align-center" style="gap:8px;flex-wrap:wrap;">' +
+                                '<div style="width:20px;height:20px;display:flex;align-items:center;justify-content:center;">' + iconSvg + '</div>' +
+                                '<span style="font-weight:600; font-size:13px; color:var(--text-primary);">' + esc(p.name || p.id) + '</span>' +
+                                (tagline ? '<span class="tag--beginner-tip" style="font-size:10px;">' + esc(tagline) + '</span>' : '') +
+                            '</div>' +
+                            '<span class="badge--source tag--' + esc((p.source || "winget").toLowerCase()) + '">Deploy</span>' +
+                        '</div>' +
+                        (desc ? '<div class="card-row__desc-expanded" style="font-size:11px; margin-top:4px; padding-left:28px;">' + esc(desc) + '</div>' : '') +
+                    '</div>';
                 });
             }
 
