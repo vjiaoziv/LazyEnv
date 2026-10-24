@@ -246,8 +246,12 @@ EnvironmentRecipe RecipeManager::createRecipeFromCurrentState(
     r.metadata.name           = name.empty() ? "My-Dev-Environment" : name;
     r.metadata.description    = desc.empty() ? "Exported from LazyEnv" : desc;
     r.metadata.author         = author.empty() ? "LazyEnv User" : author;
+#ifndef LAZYENV_VERSION_STRING
+#define LAZYENV_VERSION_STRING "0.8.3"
+#endif
+
     r.metadata.createdAt      = getIsoTimestamp();
-    r.metadata.lazyenvVersion = "0.6.0";
+    r.metadata.lazyenvVersion = LAZYENV_VERSION_STRING;
 
     r.mirrors.npm = npmMirror;
     r.mirrors.pip = pipMirror;

@@ -120,6 +120,28 @@ std::string extractJsonValue(const std::string& json, const std::string& key) {
     return result;
 }
 
+bool extractJsonBool(const std::string& json, const std::string& key, bool defaultValue = false) {
+    std::string needle = "\"" + key + "\"";
+    auto pos = json.find(needle);
+    if (pos == std::string::npos) return defaultValue;
+    pos = json.find(':', pos + needle.size());
+    if (pos == std::string::npos) return defaultValue;
+    auto valStart = json.find_first_not_of(" \t\r\n", pos + 1);
+    if (valStart == std::string::npos) return defaultValue;
+    if (json.compare(valStart, 4, "true") == 0) return true;
+    if (json.compare(valStart, 5, "false") == 0) return false;
+    if (json[valStart] == '\"') {
+        auto valEnd = json.find('\"', valStart + 1);
+        if (valEnd != std::string::npos) {
+            std::string s = json.substr(valStart + 1, valEnd - valStart - 1);
+            if (s == "true" || s == "1") return true;
+            if (s == "false" || s == "0") return false;
+        }
+    }
+    return defaultValue;
+}
+
+
 std::vector<std::string> extractJsonArray(const std::string& json,
                                           const std::string& key) {
     std::vector<std::string> result;
@@ -725,7 +747,7 @@ std::string handleWebMessage(const std::string& message) {
     }
 
     // ------ PATH Doctor: Run full environment diagnostic ------
-    if (action == "pathDoctorDiagnose") {
+    if (action == "pathDoctorDiagnose" || action == "inspectPathDoctor") {
         std::thread([]() {
             try {
                 auto rep = lazyenv::PathDoctor::diagnose();
@@ -885,8 +907,7 @@ std::string handleWebMessage(const std::string& message) {
     // ------ Updates Hub: Toggle package pin/ignore ------
     if (action == "togglePinPackage") {
         std::string pkgId = extractJsonValue(message, "packageId");
-        std::string pinnedStr = extractJsonValue(message, "pinned");
-        bool pin = (pinnedStr == "true");
+        bool pin = extractJsonBool(message, "pinned", false);
         bool ok = g_updateManager.setPackagePinned(pkgId, pin);
         return std::format("{{\"action\":\"pinResult\",\"packageId\":\"{}\",\"pinned\":{},\"success\":{}}}",
                            jsonEscape(pkgId), pin ? "true" : "false", ok ? "true" : "false");

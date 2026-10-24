@@ -5,7 +5,7 @@
 cmake_minimum_required(VERSION 3.24)
 
 project(LazyEnv
-    VERSION   0.8.2
+    VERSION   0.8.3
     LANGUAGES CXX
 )
 
@@ -137,6 +137,7 @@ if(MSVC)
         WIN32_LEAN_AND_MEAN
         UNICODE
         _UNICODE
+        LAZYENV_VERSION_STRING="${PROJECT_VERSION}"
     )
 elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
     target_compile_options(LazyEnv PRIVATE
@@ -147,6 +148,7 @@ elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
         WIN32_LEAN_AND_MEAN
         UNICODE
         _UNICODE
+        LAZYENV_VERSION_STRING="${PROJECT_VERSION}"
     )
 endif()
 

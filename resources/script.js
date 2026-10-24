@@ -1480,11 +1480,34 @@
         updatePkgCount();
     });
 
+    var btnStickyClear = document.getElementById("btnStickyClear");
+    if (btnStickyClear) {
+        btnStickyClear.addEventListener("click", function () {
+            selectedPackages.clear();
+            renderCatalog(document.getElementById("pkgSearch").value);
+            updatePkgCount();
+        });
+    }
+
     document.getElementById("btnStartInstall").addEventListener("click", function () {
         if (selectedPackages.size === 0) return;
         navigateTo("install");
         startInstall();
     });
+
+    var btnInstallGoPackages = document.getElementById("btnInstallGoPackages");
+    if (btnInstallGoPackages) {
+        btnInstallGoPackages.addEventListener("click", function () {
+            navigateTo("packages");
+        });
+    }
+
+    var btnInstallGoRecipes = document.getElementById("btnInstallGoRecipes");
+    if (btnInstallGoRecipes) {
+        btnInstallGoRecipes.addEventListener("click", function () {
+            navigateTo("recipes");
+        });
+    }
 
     // -----------------------------------------------------------------------
     // Installation
@@ -2312,9 +2335,37 @@
         btnCopyLog.addEventListener("click", function () {
             var panel = document.getElementById("batchLogPanel");
             if (!panel) return;
-            navigator.clipboard.writeText(panel.innerText || panel.textContent).then(function () {
-                showToast(t("updates.logCopied"), "info");
-            });
+            var text = panel.innerText || panel.textContent;
+            function notify(ok) {
+                if (ok) {
+                    showToast(t("updates.logCopied"), "info");
+                } else {
+                    showToast(t("toast.copyFailed") || "Copy failed", "error");
+                }
+            }
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(text).then(function () {
+                    notify(true);
+                }).catch(function () {
+                    fallbackCopy(text);
+                });
+            } else {
+                fallbackCopy(text);
+            }
+            function fallbackCopy(str) {
+                var ta = document.createElement("textarea");
+                ta.value = str;
+                ta.style.position = "fixed";
+                ta.style.opacity = "0";
+                document.body.appendChild(ta);
+                ta.select();
+                var ok = false;
+                try {
+                    ok = document.execCommand("copy");
+                } catch (_) {}
+                document.body.removeChild(ta);
+                notify(ok);
+            }
         });
     }
 
@@ -2919,6 +2970,8 @@
 
     // Actively check for updates across all sources on startup
     setTimeout(function () {
+        var startupEnabled = localStorage.getItem("lazyenv_startup_updates");
+        if (startupEnabled === "0") return;
         if (!isCheckingHubUpdates && hubUpdates.length === 0) {
             isCheckingHubUpdates = true;
             var btnHub = document.getElementById("btnCheckAllUpdates");
