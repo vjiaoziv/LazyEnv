@@ -102,6 +102,8 @@ Special thanks to everyone contributing to LazyEnv! Issues and Pull Requests are
 
 - [@vjiaoziv](https://github.com/vjiaoziv) - Project Maintainer & Core Developer
 - [@ListerOvO1211](https://github.com/ListerOvO1211) - Core Contributor
+- **DSH (DeepSeek Harness)** - Quality Assurance, Defect Discovery & Architectural Audit
+- **Codex (OpenAI)** - Implementation & Engineering Co-developer
 
 ---
 

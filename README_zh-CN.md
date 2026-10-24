@@ -135,6 +135,8 @@ cmake --build build --config Release
 
 - [@vjiaoziv](https://github.com/vjiaoziv) - 项目维护者与核心开发者
 - [@ListerOvO1211](https://github.com/ListerOvO1211) - 核心贡献者
+- **DSH (DeepSeek Harness)** - 质量审计、缺陷定位与架构治理
+- **Codex (OpenAI)** - 核心工程实现与协同开发
 
 ---
 
