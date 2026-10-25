@@ -127,6 +127,38 @@
                 }
                 break;
 
+            case "discoveredAssetsInfo":
+                var btnRescan = document.getElementById("btnRescanAssets");
+                if (btnRescan) {
+                    btnRescan.classList.remove("btn--loading");
+                    btnRescan.disabled = false;
+                }
+                var elCfgCount = document.getElementById("assetMetricConfigs");
+                if (elCfgCount) elCfgCount.textContent = d.configsCount || 0;
+                var elExtCount = document.getElementById("assetMetricExts");
+                if (elExtCount) elExtCount.textContent = d.extensionsCount || 0;
+                
+                var detailsSummary = document.getElementById("discoveredAssetsSummary");
+                if (detailsSummary) {
+                    var sumHtml = "";
+                    if (d.configs && d.configs.length > 0) {
+                        sumHtml += '<div style="font-weight:600; color:var(--text-primary); margin-bottom:4px;">' + t("migration.optConfigsTitle") + ' (' + d.configs.length + '):</div><div style="display:flex; flex-wrap:wrap; gap:6px; margin-bottom:8px;">';
+                        d.configs.forEach(function(c) {
+                            sumHtml += '<span class="config-item-chip"><span class="config-item-chip__cat config-item-chip__cat--' + esc(c.category) + '">' + esc(c.category) + '</span> ' + esc(c.name) + ' (' + esc(c.relativePath) + ')</span>';
+                        });
+                        sumHtml += '</div>';
+                    }
+                    if (d.extensions && d.extensions.length > 0) {
+                        sumHtml += '<div style="font-weight:600; color:var(--text-primary); margin-bottom:4px;">' + t("migration.optExtensionsTitle") + ' (' + d.extensions.length + '):</div><div style="display:flex; flex-wrap:wrap; gap:6px;">';
+                        d.extensions.forEach(function(ext) {
+                            sumHtml += '<span class="config-item-chip"><span class="config-item-chip__cat config-item-chip__cat--ide">' + esc(ext.ide) + '</span> ' + esc(ext.displayName || ext.extensionId) + '</span>';
+                        });
+                        sumHtml += '</div>';
+                    }
+                    detailsSummary.innerHTML = sumHtml || '<div class="text-secondary">未检测到任何配置文件</div>';
+                }
+                break;
+
             case "deployRecipeComplete":
                 if (d.success) {
                     showToast(t("recipes.deployComplete"), "success");
@@ -931,6 +963,11 @@
         if (currentPage === "recipes") {
             renderFeaturedRecipes();
             if (currentRecipeDiff) renderRecipeDiff(currentRecipeDiff);
+            sendNative({ action: "scanDiscoveredAssets" });
+            var elTools = document.getElementById("assetMetricTools");
+            if (elTools) elTools.textContent = detectedEnvironments.length + manualEnvironments.length;
+            var elVars = document.getElementById("assetMetricVars");
+            if (elVars) elVars.textContent = userEnvVars.length + systemEnvVars.length;
         }
         if (currentPage === "settings") {
             renderEnvVarTable();
@@ -4133,6 +4170,9 @@
         var elVars = document.getElementById("diffVarsCount");
         if (elVars) elVars.textContent = (diff.varsCount || 0) + (diff.pathsCount || 0);
 
+        var elConfigs = document.getElementById("diffConfigsCount");
+        if (elConfigs) elConfigs.textContent = diff.configsCount || (diff.configs ? diff.configs.length : 0);
+
         var list = document.getElementById("diffItemsList");
         if (list) {
             var html = "";
@@ -4178,6 +4218,28 @@
                         '<span class="badge badge--uptodate">Installed</span>' +
                         '</div>';
                 });
+            }
+
+            // Config files to restore (v2.0)
+            if (diff.configs && diff.configs.length > 0) {
+                html += '<div class="mt-md mb-sm" style="font-size:12px; font-weight:600; color:var(--text-warning);">' +
+                        esc(t("migration.diffConfigs")) + ' (' + diff.configs.length + '):</div>';
+                diff.configs.forEach(function (c) {
+                    html += '<div class="diff-config-card">' +
+                        '<div class="flex-align-center" style="gap:8px;">' +
+                            '<span class="config-item-chip__cat config-item-chip__cat--' + esc(c.category) + '">' + esc(c.category) + '</span>' +
+                            '<span style="font-weight:600; font-size:13px;">' + esc(c.name) + '</span>' +
+                            '<span class="text-secondary" style="font-size:11px; font-family:var(--font-mono);">' + esc(c.relativePath) + '</span>' +
+                        '</div>' +
+                        '<span class="badge badge--update">Deploy</span>' +
+                    '</div>';
+                });
+            }
+
+            // Extensions count (v2.0)
+            if (diff.extensionsCount > 0) {
+                html += '<div class="mt-sm mb-xs" style="font-size:12px; color:var(--text-secondary);">' +
+                        esc(t("migration.diffExts")) + ': <strong>' + diff.extensionsCount + '</strong> 项 IDE / AI Agent 扩展将在部署时同步配置</div>';
             }
 
             list.innerHTML = html;
@@ -4232,6 +4294,82 @@
         btnCancelD.addEventListener("click", function () {
             var box = document.getElementById("recipeDiffBox");
             if (box) box.style.display = "none";
+        });
+    }
+
+    // -------------------------------------------------------------
+    // Migration Hub & 4-in-1 Sub-tabs Listeners (v0.9.0)
+    // -------------------------------------------------------------
+    var rSubTabs = document.getElementById("recipesSubTabs");
+    if (rSubTabs) {
+        rSubTabs.querySelectorAll(".tab").forEach(function (tab) {
+            tab.addEventListener("click", function () {
+                rSubTabs.querySelectorAll(".tab").forEach(function (t) { t.classList.remove("tab--active"); });
+                tab.classList.add("tab--active");
+                var sub = tab.getAttribute("data-subtab");
+                document.querySelectorAll(".recipes-subtab-pane").forEach(function (p) { p.style.display = "none"; });
+                var targetPane = document.getElementById("subtab-pane-" + sub);
+                if (targetPane) targetPane.style.display = "block";
+                if (sub === "snapshots") {
+                    loadSnapshots();
+                } else if (sub === "migration") {
+                    sendNative({ action: "scanDiscoveredAssets" });
+                }
+            });
+        });
+    }
+
+    var btnRescan = document.getElementById("btnRescanAssets");
+    if (btnRescan) {
+        btnRescan.addEventListener("click", function () {
+            btnRescan.classList.add("btn--loading");
+            btnRescan.disabled = true;
+            sendNative({ action: "scanDiscoveredAssets" });
+        });
+    }
+
+    var btnExportMig = document.getElementById("btnExportMigration");
+    if (btnExportMig) {
+        btnExportMig.addEventListener("click", function () {
+            var n = (document.getElementById("inputMigrationName") ? document.getElementById("inputMigrationName").value : "").trim() || "My-Dev-Environment";
+            var a = (document.getElementById("inputMigrationAuthor") ? document.getElementById("inputMigrationAuthor").value : "").trim() || "Developer";
+            var incPkgs = document.getElementById("chkExportPackages") ? document.getElementById("chkExportPackages").checked : true;
+            var incVars = document.getElementById("chkExportEnvVars") ? document.getElementById("chkExportEnvVars").checked : true;
+            var incCfgs = document.getElementById("chkExportConfigs") ? document.getElementById("chkExportConfigs").checked : true;
+            var incExts = document.getElementById("chkExportExtensions") ? document.getElementById("chkExportExtensions").checked : true;
+
+            sendNative({
+                action: "exportMigrationRecipe",
+                name: n,
+                author: a,
+                description: "4-in-1 complete machine environment migration package",
+                includePackages: incPkgs,
+                includeEnvVars: incVars,
+                includeConfigs: incCfgs,
+                includeIdeExtensions: incExts
+            });
+        });
+    }
+
+    var btnImportMig = document.getElementById("btnImportMigration");
+    if (btnImportMig) {
+        btnImportMig.addEventListener("click", function () {
+            sendNative({ action: "importRecipeDialog" });
+        });
+    }
+
+    var btnCreateSnapTab = document.getElementById("btnCreateSnapshotInTab");
+    if (btnCreateSnapTab) {
+        btnCreateSnapTab.addEventListener("click", function () {
+            var btnOrig = document.getElementById("btnCreateSnapshot");
+            if (btnOrig) btnOrig.click();
+        });
+    }
+    var btnImportSnapTab = document.getElementById("btnImportSnapshotInTab");
+    if (btnImportSnapTab) {
+        btnImportSnapTab.addEventListener("click", function () {
+            var btnOrig = document.getElementById("btnImportSnapshot");
+            if (btnOrig) btnOrig.click();
         });
     }
 

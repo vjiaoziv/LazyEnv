@@ -80,6 +80,9 @@ public:
     // Returns the new snapshot ID on success, empty string on failure.
     std::string importSnapshot(const std::string& srcPath);
 
+    // Storage directory for snapshots (%LOCALAPPDATA%/LazyEnv/snapshots)
+    std::filesystem::path getStorageDir() const { return storageDir_; }
+
     // Export a single environment variable's current value (for diff display).
     static std::string readEnvVariable(const std::string& name, bool system);
 

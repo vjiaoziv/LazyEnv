@@ -45,13 +45,30 @@ struct RecipeMirrors {
     std::string pip;
 };
 
+struct RecipeConfigFile {
+    std::string category;       // "git", "npm", "pip", "ide", "agent", "cargo"
+    std::string name;           // Display name e.g. "Git Config (.gitconfig)"
+    std::string relativePath;   // Relative to targetDirMacro, e.g. ".gitconfig", "pip/pip.ini", "Code/User/settings.json"
+    std::string targetDirMacro; // "%USERPROFILE%" or "%APPDATA%"
+    std::string content;        // text content
+    bool        isBase64 = false;
+};
+
+struct RecipeIdeExtension {
+    std::string ide;            // "vscode", "cursor"
+    std::string extensionId;    // e.g. "ms-python.python"
+    std::string displayName;    // optional
+};
+
 struct EnvironmentRecipe {
-    std::string formatVersion = "1.0";
+    std::string formatVersion = "2.0";
     RecipeMetadata metadata;
     RecipeMirrors mirrors;
     std::vector<RecipePackageItem> packages;
     std::vector<RecipeEnvVar> environmentVariables;
     std::vector<std::string> paths;
+    std::vector<RecipeConfigFile> configFiles;          // v2.0
+    std::vector<RecipeIdeExtension> ideExtensions;      // v2.0
 };
 
 struct RecipeDiffReport {
@@ -63,6 +80,8 @@ struct RecipeDiffReport {
     std::vector<RecipePackageItem> missingPackages;   // Need to install
     std::vector<RecipeEnvVar>      varsToApply;
     std::vector<std::string>       pathsToApply;
+    std::vector<RecipeConfigFile>  configsToApply;    // v2.0
+    std::vector<RecipeIdeExtension> extensionsToApply;// v2.0
 };
 
 class RecipeManager {
@@ -80,6 +99,31 @@ public:
         const std::vector<DetectedEnvItem>& detectedEnvs,
         const std::string& npmMirror,
         const std::string& pipMirror);
+
+    // v2.0: Discover current machine's configuration files (dotfiles, IDE, Agent)
+    static std::vector<RecipeConfigFile> discoverCurrentConfigFiles();
+
+    // v2.0: Discover installed IDE extensions (VS Code, Cursor)
+    static std::vector<RecipeIdeExtension> discoverIdeExtensions();
+
+    // v2.0: Create complete 4-in-1 migration recipe
+    static EnvironmentRecipe createMigrationRecipe(
+        const std::string& name,
+        const std::string& desc,
+        const std::string& author,
+        const std::vector<DetectedEnvItem>& detectedEnvs,
+        const std::string& npmMirror,
+        const std::string& pipMirror,
+        bool includePackages,
+        bool includeEnvVars,
+        bool includeConfigs,
+        bool includeIdeExtensions);
+
+    // v2.0: Restore configuration files with safety backup of existing files into snapshot folder
+    static bool restoreConfigFiles(
+        const std::vector<RecipeConfigFile>& configs,
+        const std::string& backupDir,
+        LineCallback onLog);
 
     static RecipeDiffReport analyzeRecipeDiff(
         const EnvironmentRecipe& recipe,

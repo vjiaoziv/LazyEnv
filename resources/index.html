@@ -115,7 +115,7 @@
         </div>
 
         <div class="sidebar__footer">
-            <span class="sidebar__version">LazyEnv v0.8.14</span>
+            <span class="sidebar__version">LazyEnv v0.9.0</span>
             <select class="sidebar__lang-select" id="langSelect">
                 <option value="en">English</option>
                 <option value="zh-CN">中文</option>
@@ -342,67 +342,189 @@
                 <div id="updatesList"></div>
             </div>
 
-            <!-- ==================== RECIPES HUB ==================== -->
+            <!-- ==================== RECIPES & MIGRATION HUB ==================== -->
             <div class="page" id="page-recipes">
-                <h1 class="page-title" data-i18n="recipes.title">Environment Recipes (.lazyenv)</h1>
-                <p class="page-desc" data-i18n="recipes.desc">Export your current dev environment to a declarative recipe, or import and deploy standardized stacks for teams.</p>
+                <h1 class="page-title" data-i18n="recipes.title">Environment Recipes & Migration Hub (.lazyenv)</h1>
+                <p class="page-desc" data-i18n="recipes.desc">Export complete 4-in-1 dev environments for backup & migration, or deploy curated team stacks.</p>
 
-                <div class="toolbar">
-                    <button class="btn btn--accent" id="btnExportRecipe">
-                        <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-                            <path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/>
-                            <path d="M7.646 11.854a.5.5 0 0 0 .708 0l3-3a.5.5 0 0 0-.708-.708L8.5 10.293V1.5a.5.5 0 0 0-1 0v8.793L5.354 8.146a.5.5 0 1 0-.708.708l3 3z"/>
-                        </svg>
-                        <span data-i18n="recipes.btnExport">Export Current Environment</span>
+                <!-- Sub-tabs navigation -->
+                <div class="tabs mb-lg" id="recipesSubTabs">
+                    <button class="tab tab--active" data-subtab="migration">
+                        <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/><path d="M7.646 1.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1-.708.708L8.5 2.707V10.5a.5.5 0 0 1-1 0V2.707L5.354 4.854a.5.5 0 1 1-.708-.708l3-3z"/></svg>
+                        <span data-i18n="migration.tabMigration">整机开发环境迁移</span>
                     </button>
-                    <button class="btn" id="btnImportRecipe">
-                        <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-                            <path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/>
-                            <path d="M7.646 1.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1-.708.708L8.5 2.707V10.5a.5.5 0 0 1-1 0V2.707L5.354 4.854a.5.5 0 1 1-.708-.708l3-3z"/>
-                        </svg>
-                        <span data-i18n="recipes.btnImport">Import Recipe File</span>
+                    <button class="tab" data-subtab="featured">
+                        <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M3.5 0a.5.5 0 0 1 .5.5V1h8V.5a.5.5 0 0 1 1 0V1h1a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V3a2 2 0 0 1 2-2h1V.5a.5.5 0 0 1 .5-.5zM2 2a1 1 0 0 0-1 1v1h14V3a1 1 0 0 0-1-1H2zm13 3H1v9a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V5z"/></svg>
+                        <span data-i18n="migration.tabFeatured">官方精选场景栈</span>
+                    </button>
+                    <button class="tab" data-subtab="snapshots">
+                        <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2v1z"/><path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466z"/></svg>
+                        <span data-i18n="migration.tabSnapshots">时光机快照回溯</span>
                     </button>
                 </div>
 
-                <!-- Pre-flight Diff Box -->
-                <div class="card-box mb-lg diag-card" id="recipeDiffBox" style="display:none">
-                    <div class="flex-between mb-sm">
-                        <div style="font-weight:600; font-size:16px;" id="diffRecipeName" data-i18n="recipes.diffPreflightTitle">Recipe Diff Preflight</div>
-                        <span class="badge--source tag--winget" id="diffRecipeAuthor" data-i18n="recipes.authorLabel">Author</span>
+                <!-- Subtab 1: 整机开发环境迁移 -->
+                <div class="recipes-subtab-pane" id="subtab-pane-migration" style="display:block;">
+                    <!-- 1. Asset Discovery & Export Card -->
+                    <div class="card-box mb-lg">
+                        <div class="flex-between mb-sm" style="flex-wrap:wrap; gap:8px;">
+                            <div>
+                                <div class="flex-align-center" style="gap:8px;">
+                                    <span style="font-weight:600; font-size:15px;" data-i18n="migration.assetTitle">本机开发环境资产 (4合1全景)</span>
+                                    <span class="badge badge--success" style="font-size:10px;" data-i18n="migration.safetyBadge">已过滤私钥与凭证</span>
+                                </div>
+                                <div class="text-secondary" style="font-size:12px; margin-top:2px;" data-i18n="migration.assetDesc">自动扫描并聚合基础工具链、全局环境变量、关键开发配置与 IDE/Agent 规则清单。</div>
+                            </div>
+                            <div class="toolbar" style="margin-bottom:0;">
+                                <button class="btn btn--sm" id="btnRescanAssets">
+                                    <svg class="btn__icon-spin" width="13" height="13" viewBox="0 0 16 16" fill="currentColor"><path fill-rule="evenodd" d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2v1z"/><path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466z"/></svg>
+                                    <span data-i18n="migration.btnRescan">重新扫描资产</span>
+                                </button>
+                                <button class="btn btn--sm btn--accent" id="btnImportMigration">
+                                    <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor"><path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/><path d="M7.646 1.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1-.708.708L8.5 2.707V10.5a.5.5 0 0 1-1 0V2.707L5.354 4.854a.5.5 0 1 1-.708-.708l3-3z"/></svg>
+                                    <span data-i18n="migration.btnImportPackage">导入环境资产包 (.lazyenv)</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="doctor-metrics-grid mb-md">
+                            <div class="metric-mini-card">
+                                <div class="metric-mini-card__label" data-i18n="migration.toolsCount">已安装工具链</div>
+                                <div class="metric-mini-card__value text-accent" id="assetMetricTools">0</div>
+                            </div>
+                            <div class="metric-mini-card">
+                                <div class="metric-mini-card__label" data-i18n="migration.varsCount">全局环境变量</div>
+                                <div class="metric-mini-card__value text-success" id="assetMetricVars">0</div>
+                            </div>
+                            <div class="metric-mini-card">
+                                <div class="metric-mini-card__label" data-i18n="migration.configsCount">开发配置与Dotfiles</div>
+                                <div class="metric-mini-card__value text-warning" id="assetMetricConfigs">0</div>
+                            </div>
+                            <div class="metric-mini-card">
+                                <div class="metric-mini-card__label" data-i18n="migration.extsCount">IDE扩展与Agent规则</div>
+                                <div class="metric-mini-card__value" id="assetMetricExts">0</div>
+                            </div>
+                        </div>
+
+                        <!-- 4-in-1 Checklist & Export Form -->
+                        <div class="migration-export-form mb-md" style="padding:12px; background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-radius:var(--radius-sm);">
+                            <div style="font-weight:600; font-size:13px; margin-bottom:8px;" data-i18n="migration.exportOptionsTitle">选择要包含在导出资产包中的环境要素：</div>
+                            <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:8px; margin-bottom:12px;">
+                                <label class="migration-opt-item">
+                                    <input type="checkbox" id="chkExportPackages" checked>
+                                    <div>
+                                        <div style="font-weight:600; font-size:12px;" data-i18n="migration.optPackagesTitle">基础环境与工具链清单</div>
+                                        <div class="text-secondary" style="font-size:11px;" data-i18n="migration.optPackagesDesc">已检测到的工具链及其精确版本号</div>
+                                    </div>
+                                </label>
+                                <label class="migration-opt-item">
+                                    <input type="checkbox" id="chkExportEnvVars" checked>
+                                    <div>
+                                        <div style="font-weight:600; font-size:12px;" data-i18n="migration.optEnvVarsTitle">全局环境变量与系统 PATH</div>
+                                        <div class="text-secondary" style="font-size:11px;" data-i18n="migration.optEnvVarsDesc">系统与用户环境变量及 PATH 优先级结构</div>
+                                    </div>
+                                </label>
+                                <label class="migration-opt-item">
+                                    <input type="checkbox" id="chkExportConfigs" checked>
+                                    <div>
+                                        <div style="font-weight:600; font-size:12px;" data-i18n="migration.optConfigsTitle">关键开发配置文件与 Dotfiles</div>
+                                        <div class="text-secondary" style="font-size:11px;" data-i18n="migration.optConfigsDesc">.gitconfig, .npmrc, pip.ini, VS Code / Cursor 设置</div>
+                                    </div>
+                                </label>
+                                <label class="migration-opt-item">
+                                    <input type="checkbox" id="chkExportExtensions" checked>
+                                    <div>
+                                        <div style="font-weight:600; font-size:12px;" data-i18n="migration.optExtensionsTitle">IDE 扩展与 AI Agent 规则</div>
+                                        <div class="text-secondary" style="font-size:11px;" data-i18n="migration.optExtensionsDesc">VS Code / Cursor 插件与 Codex / Claude Agent 全局规则</div>
+                                    </div>
+                                </label>
+                            </div>
+
+                            <!-- Discovered details drawer (collapsible) -->
+                            <details id="detailsDiscoveredFiles" style="margin-bottom:12px; font-size:12px;">
+                                <summary style="cursor:pointer; color:var(--accent); font-weight:600;" data-i18n="migration.viewDiscoveredAssets">查看检测到的配置详情与插件列表 ▾</summary>
+                                <div style="margin-top:8px; display:flex; flex-direction:column; gap:6px;" id="discoveredAssetsSummary"></div>
+                            </details>
+
+                            <div class="flex-align-center" style="gap:10px; flex-wrap:wrap;">
+                                <input type="text" class="input" id="inputMigrationName" placeholder="资产包名称" style="max-width:240px;" value="My-Dev-Environment">
+                                <input type="text" class="input" id="inputMigrationAuthor" placeholder="维护者" style="max-width:160px;" value="Developer">
+                                <button class="btn btn--accent" id="btnExportMigration">
+                                    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/><path d="M7.646 11.854a.5.5 0 0 0 .708 0l3-3a.5.5 0 0 0-.708-.708L8.5 10.293V1.5a.5.5 0 0 0-1 0v8.793L5.354 8.146a.5.5 0 1 0-.708.708l3 3z"/></svg>
+                                    <span data-i18n="migration.btnExportPackage">一键打包导出环境资产包 (.lazyenv)</span>
+                                </button>
+                            </div>
+                        </div>
                     </div>
-                    <p class="text-secondary mb-md" id="diffRecipeDesc" style="font-size:13px"></p>
 
-                    <div class="doctor-metrics-grid mb-md">
-                        <div class="metric-mini-card">
-                            <div class="metric-mini-card__label" data-i18n="recipes.toInstall">To Install</div>
-                            <div class="metric-mini-card__value text-accent" id="diffMissingCount">0</div>
+                    <!-- Pre-flight Diff Box for Import -->
+                    <div class="card-box mb-lg diag-card" id="recipeDiffBox" style="display:none">
+                        <div class="flex-between mb-sm">
+                            <div style="font-weight:600; font-size:16px;" id="diffRecipeName" data-i18n="recipes.diffPreflightTitle">Recipe Diff Preflight</div>
+                            <span class="badge--source tag--winget" id="diffRecipeAuthor" data-i18n="recipes.authorLabel">Author</span>
                         </div>
-                        <div class="metric-mini-card">
-                            <div class="metric-mini-card__label" data-i18n="recipes.skipped">Ready (Skip)</div>
-                            <div class="metric-mini-card__value text-success" id="diffInstalledCount">0</div>
-                        </div>
-                        <div class="metric-mini-card">
-                            <div class="metric-mini-card__label" data-i18n="recipes.mirrors">Mirrors</div>
-                            <div class="metric-mini-card__value" id="diffMirrorsCount">2</div>
-                        </div>
-                        <div class="metric-mini-card">
-                            <div class="metric-mini-card__label" data-i18n="recipes.envVars">Env Vars</div>
-                            <div class="metric-mini-card__value text-warning" id="diffVarsCount">0</div>
-                        </div>
-                    </div>
+                        <p class="text-secondary mb-md" id="diffRecipeDesc" style="font-size:13px"></p>
 
-                    <div id="diffItemsList" class="mb-md"></div>
+                        <div class="doctor-metrics-grid mb-md">
+                            <div class="metric-mini-card">
+                                <div class="metric-mini-card__label" data-i18n="recipes.toInstall">To Install</div>
+                                <div class="metric-mini-card__value text-accent" id="diffMissingCount">0</div>
+                            </div>
+                            <div class="metric-mini-card">
+                                <div class="metric-mini-card__label" data-i18n="migration.diffConfigs">待恢复配置</div>
+                                <div class="metric-mini-card__value text-warning" id="diffConfigsCount">0</div>
+                            </div>
+                            <div class="metric-mini-card">
+                                <div class="metric-mini-card__label" data-i18n="recipes.envVars">Env Vars</div>
+                                <div class="metric-mini-card__value" id="diffVarsCount">0</div>
+                            </div>
+                            <div class="metric-mini-card">
+                                <div class="metric-mini-card__label" data-i18n="recipes.skipped">Ready (Skip)</div>
+                                <div class="metric-mini-card__value text-success" id="diffInstalledCount">0</div>
+                            </div>
+                        </div>
 
-                    <div class="toolbar" style="margin-bottom:0">
-                        <button class="btn btn--accent" id="btnDeployRecipe" data-i18n="recipes.btnDeploy">Deploy & Configure Environment</button>
-                        <button class="btn" id="btnCancelDiff" data-i18n="dialog.cancel">Cancel</button>
+                        <div class="info-box info-box--info mb-md" style="font-size:12px;">
+                            <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor" style="flex-shrink:0;"><path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0-1A6 6 0 1 0 8 2a6 6 0 0 0 0 12zm-.5-9h1v1h-1V5zm0 2h1v4h-1V7z"/></svg>
+                            <span data-i18n="migration.configBackupNotice">安全气囊保障：部署前系统将自动生成全局快照，原始同名配置自动归档至快照 configs/ 目录以备无损回滚。</span>
+                        </div>
+
+                        <div id="diffItemsList" class="mb-md"></div>
+
+                        <div class="toolbar" style="margin-bottom:0">
+                            <button class="btn btn--accent" id="btnDeployRecipe" data-i18n="recipes.btnDeploy">一键增量还原环境</button>
+                            <button class="btn" id="btnCancelDiff" data-i18n="dialog.cancel">Cancel</button>
+                        </div>
                     </div>
                 </div>
 
-                <!-- Featured Team Stacks -->
-                <div class="card-section mt-lg">
-                    <div class="card-section__title" data-i18n="recipes.featuredTitle">Featured Team Stacks</div>
-                    <div class="preset-stacks-scroll" id="featuredRecipesList"></div>
+                <!-- Subtab 2: 官方精选场景栈 -->
+                <div class="recipes-subtab-pane" id="subtab-pane-featured" style="display:none;">
+                    <div class="card-section">
+                        <div class="card-section__title" data-i18n="recipes.featuredTitle">Featured Team Stacks</div>
+                        <div class="preset-stacks-scroll" id="featuredRecipesList"></div>
+                    </div>
+                </div>
+
+                <!-- Subtab 3: 时光机快照回溯 -->
+                <div class="recipes-subtab-pane" id="subtab-pane-snapshots" style="display:none;">
+                    <div class="flex-between mb-md">
+                        <div>
+                            <div style="font-weight:600; font-size:15px;" data-i18n="migration.snapshotsTitle">时光机环境快照记录</div>
+                            <div class="text-secondary" style="font-size:12px; margin-top:2px;" data-i18n="migration.snapshotsDesc">记录历次配置部署、PATH治理与系统变更。支持一键瞬间回退，文件与注册表无损还原。</div>
+                        </div>
+                        <div class="toolbar" style="margin-bottom:0;">
+                            <button class="btn btn--sm" id="btnCreateSnapshotInTab">
+                                <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor"><path d="M8 2a.5.5 0 0 1 .5.5v5h5a.5.5 0 0 1 0 1h-5v5a.5.5 0 0 1-1 0v-5h-5a.5.5 0 0 1 0-1h5v-5A.5.5 0 0 1 8 2z"/></svg>
+                                <span data-i18n="recovery.create">创建快照</span>
+                            </button>
+                            <button class="btn btn--sm" id="btnImportSnapshotInTab">
+                                <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor"><path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/><path d="M7.646 1.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1-.708.708L8.5 2.707V10.5a.5.5 0 0 1-1 0V2.707L5.354 4.854a.5.5 0 1 1-.708-.708l3-3z"/></svg>
+                                <span data-i18n="recovery.import">导入快照</span>
+                            </button>
+                        </div>
+                    </div>
+                    <div id="timeMachineSnapshotList"></div>
                 </div>
             </div>
 
@@ -629,7 +751,7 @@
                         <div class="flex-between">
                             <div>
                                 <div style="font-weight:600;font-size:13px;" data-i18n="settings.prefAbout">About LazyEnv</div>
-                                <div class="text-secondary" style="font-size:12px;">LazyEnv v0.8.14 • Open-Source Developer Environment Configurator</div>
+                                <div class="text-secondary" style="font-size:12px;">LazyEnv v0.9.0 • Open-Source Developer Environment Configurator</div>
                                 <div class="text-secondary" style="font-size:11px; margin-top:4px;">Co-developed with Codex & DSH</div>
                             </div>
                             <button class="btn btn--sm" id="btnOpenGitHub" data-i18n="settings.prefOpenRepo">GitHub Repository</button>

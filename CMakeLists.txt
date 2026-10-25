@@ -5,7 +5,7 @@
 cmake_minimum_required(VERSION 3.24)
 
 project(LazyEnv
-    VERSION   0.8.14
+    VERSION   0.9.0
     LANGUAGES CXX
 )
 
@@ -242,6 +242,44 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_v0814.cpp")
     if(MSVC)
         target_compile_options(test_v0814 PRIVATE /W4 /utf-8 /permissive- /Zc:__cplusplus)
         target_compile_definitions(test_v0814 PRIVATE
+            _CRT_SECURE_NO_WARNINGS
+            NOMINMAX
+            WIN32_LEAN_AND_MEAN
+            UNICODE
+            _UNICODE
+            LAZYENV_VERSION_STRING="${PROJECT_VERSION}"
+        )
+    endif()
+endif()
+
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_v090.cpp")
+    add_executable(test_v090
+        tests/test_v090.cpp
+        installer.cpp
+        rollback.cpp
+        path_doctor.cpp
+        package_manager.cpp
+        recipe_manager.cpp
+        update_manager.cpp
+    )
+    target_include_directories(test_v090 PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${WEBVIEW2_INCLUDE_DIR}
+        ${WIL_INCLUDE_DIR}
+    )
+    target_link_libraries(test_v090 PRIVATE
+        Shlwapi.lib
+        Ole32.lib
+        Shell32.lib
+        Advapi32.lib
+        User32.lib
+        Gdi32.lib
+        Dwmapi.lib
+        Shcore.lib
+    )
+    if(MSVC)
+        target_compile_options(test_v090 PRIVATE /W4 /utf-8 /permissive- /Zc:__cplusplus)
+        target_compile_definitions(test_v090 PRIVATE
             _CRT_SECURE_NO_WARNINGS
             NOMINMAX
             WIN32_LEAN_AND_MEAN

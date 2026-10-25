@@ -434,13 +434,48 @@ bool RollbackManager::restoreSnapshot(const std::string& snapshotId) {
     // Attempt system environment (may fail without admin privileges)
     restoreRegistryKey(snap.system_env, true);
 
+    // Restore any backed-up configuration files if present
+    auto configBackupDir = storageDir_ / snapshotId / "configs";
+    if (std::filesystem::exists(configBackupDir) && std::filesystem::is_directory(configBackupDir)) {
+        wchar_t uProfile[MAX_PATH];
+        DWORD uLen = GetEnvironmentVariableW(L"USERPROFILE", uProfile, MAX_PATH);
+        std::filesystem::path userProfile = (uLen > 0 && uLen < MAX_PATH) ? std::filesystem::path(uProfile) : std::filesystem::path("C:/Users/Default");
+
+        wchar_t aData[MAX_PATH];
+        DWORD aLen = GetEnvironmentVariableW(L"APPDATA", aData, MAX_PATH);
+        std::filesystem::path appData = (aLen > 0 && aLen < MAX_PATH) ? std::filesystem::path(aData) : userProfile / "AppData" / "Roaming";
+
+        for (const auto& entry : std::filesystem::recursive_directory_iterator(configBackupDir)) {
+            if (entry.is_regular_file()) {
+                auto rel = std::filesystem::relative(entry.path(), configBackupDir);
+                std::filesystem::path dest;
+                std::string relStr = rel.string();
+                if (relStr.find("Code") == 0 || relStr.find("Cursor") == 0 || relStr.find("pip") == 0) {
+                    dest = appData / rel;
+                } else {
+                    dest = userProfile / rel;
+                }
+                try {
+                    std::filesystem::create_directories(dest.parent_path());
+                    std::filesystem::copy_file(entry.path(), dest, std::filesystem::copy_options::overwrite_existing);
+                } catch (...) {}
+            }
+        }
+    }
+
     broadcastEnvironmentChange();
     return true;
 }
 
 bool RollbackManager::deleteSnapshot(const std::string& snapshotId) {
     auto path = storageDir_ / (snapshotId + ".json");
-    return std::filesystem::remove(path);
+    bool ok = std::filesystem::remove(path);
+    auto configDir = storageDir_ / snapshotId;
+    if (std::filesystem::exists(configDir)) {
+        std::error_code ec;
+        std::filesystem::remove_all(configDir, ec);
+    }
+    return ok;
 }
 
 bool RollbackManager::exportSnapshot(const std::string& snapshotId,

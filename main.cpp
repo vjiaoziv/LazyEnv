@@ -62,6 +62,7 @@ static lazyenv::UpdateManager  g_updateManager(g_rollback);
 // g_msgMutex is no longer needed; postMessage is now thread-safe via message queue
 static HWND                     g_mainWindow = nullptr;
 static bool                     g_isMaximized = false;
+static lazyenv::EnvironmentRecipe g_lastImportedRecipe;
 
 // ---------------------------------------------------------------------------
 // JSON helpers
@@ -696,6 +697,106 @@ std::string handleWebMessage(const std::string& message) {
         return "{\"action\":\"verifyStarted\"}";
     }
 
+    // ------ Migration Hub: Scan discovered local assets (4-in-1 preview) ------
+    if (action == "scanDiscoveredAssets") {
+        std::thread([]() {
+            try {
+                auto configs = lazyenv::RecipeManager::discoverCurrentConfigFiles();
+                auto exts = lazyenv::RecipeManager::discoverIdeExtensions();
+                std::ostringstream os;
+                os << "{\"action\":\"discoveredAssetsInfo\",\"configsCount\":" << configs.size()
+                   << ",\"extensionsCount\":" << exts.size()
+                   << ",\"configs\":[";
+                for (size_t i = 0; i < configs.size(); ++i) {
+                    os << "{\"category\":\"" << jsonEscape(configs[i].category) << "\","
+                       << "\"name\":\"" << jsonEscape(configs[i].name) << "\","
+                       << "\"relativePath\":\"" << jsonEscape(configs[i].relativePath) << "\"}";
+                    if (i + 1 < configs.size()) os << ",";
+                }
+                os << "],\"extensions\":[";
+                for (size_t i = 0; i < exts.size(); ++i) {
+                    os << "{\"ide\":\"" << jsonEscape(exts[i].ide) << "\","
+                       << "\"extensionId\":\"" << jsonEscape(exts[i].extensionId) << "\","
+                       << "\"displayName\":\"" << jsonEscape(exts[i].displayName) << "\"}";
+                    if (i + 1 < exts.size()) os << ",";
+                }
+                os << "]}";
+                g_webview.postMessage(os.str());
+            } catch (...) {
+                g_webview.postMessage("{\"action\":\"discoveredAssetsInfo\",\"configsCount\":0,\"extensionsCount\":0,\"configs\":[],\"extensions\":[]}");
+            }
+        }).detach();
+        return "{\"action\":\"scanDiscoveredAssetsStarted\"}";
+    }
+
+    // ------ Migration Hub: Export complete 4-in-1 migration recipe (.lazyenv) ------
+    if (action == "exportMigrationRecipe") {
+        std::string rName = extractJsonValue(message, "name");
+        std::string rDesc = extractJsonValue(message, "description");
+        std::string rAuthor = extractJsonValue(message, "author");
+        bool incPkgs = extractJsonBool(message, "includePackages", true);
+        bool incVars = extractJsonBool(message, "includeEnvVars", true);
+        bool incCfgs = extractJsonBool(message, "includeConfigs", true);
+        bool incExts = extractJsonBool(message, "includeIdeExtensions", true);
+
+        HWND owner = g_mainWindow;
+        std::thread([owner, rName, rDesc, rAuthor, incPkgs, incVars, incCfgs, incExts]() {
+            CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+            IFileSaveDialog* pDialog = nullptr;
+            HRESULT hr = CoCreateInstance(CLSID_FileSaveDialog, nullptr,
+                                          CLSCTX_INPROC_SERVER,
+                                          IID_PPV_ARGS(&pDialog));
+            if (SUCCEEDED(hr)) {
+                COMDLG_FILTERSPEC filter[] = {
+                    { L"LazyEnv Recipe (*.lazyenv)", L"*.lazyenv" },
+                    { L"All Files", L"*.*" }
+                };
+                pDialog->SetFileTypes(2, filter);
+                pDialog->SetDefaultExtension(L"lazyenv");
+                std::string defaultFileName = (rName.empty() ? "My-Dev-Environment" : rName) + ".lazyenv";
+                std::wstring wDefName = utf8ToWide(defaultFileName);
+                pDialog->SetFileName(wDefName.c_str());
+
+                hr = pDialog->Show(owner);
+                if (SUCCEEDED(hr)) {
+                    IShellItem* pItem = nullptr;
+                    hr = pDialog->GetResult(&pItem);
+                    if (SUCCEEDED(hr)) {
+                        PWSTR filePath = nullptr;
+                        pItem->GetDisplayName(SIGDN_FILESYSPATH, &filePath);
+                        if (filePath) {
+                            int len = WideCharToMultiByte(CP_UTF8, 0, filePath, -1, nullptr, 0, nullptr, nullptr);
+                            std::string destPath(len - 1, '\0');
+                            WideCharToMultiByte(CP_UTF8, 0, filePath, -1, destPath.data(), len, nullptr, nullptr);
+                            CoTaskMemFree(filePath);
+
+                            auto curEnvsStr = detectInstalledEnvironments();
+                            auto curEnvs = parseEnvironmentsFromJson("{\"environments\":" + curEnvsStr + "}");
+                            auto recipe = lazyenv::RecipeManager::createMigrationRecipe(
+                                rName, rDesc, rAuthor, curEnvs,
+                                "https://registry.npmmirror.com", "https://pypi.tuna.tsinghua.edu.cn/simple",
+                                incPkgs, incVars, incCfgs, incExts);
+
+                            bool ok = lazyenv::RecipeManager::saveRecipeToFile(destPath, recipe);
+                            if (ok) {
+                                std::string resp = std::format(
+                                    "{{\"action\":\"exportRecipeResult\",\"success\":true,\"filePath\":\"{}\"}}",
+                                    jsonEscape(destPath));
+                                g_webview.postMessage(resp);
+                            } else {
+                                g_webview.postMessage("{\"action\":\"exportRecipeResult\",\"success\":false}");
+                            }
+                        }
+                        pItem->Release();
+                    }
+                }
+                pDialog->Release();
+            }
+            CoUninitialize();
+        }).detach();
+        return "{\"action\":\"exportRecipeStarted\"}";
+    }
+
     // ------ Recipes: Export current dev stack to .lazyenv file ------
     if (action == "exportRecipeDialog") {
         std::string rName   = extractJsonValue(message, "name");
@@ -788,7 +889,7 @@ std::string handleWebMessage(const std::string& message) {
                             lazyenv::EnvironmentRecipe recipe;
                             bool ok = lazyenv::RecipeManager::loadRecipeFromFile(srcPath, recipe);
                             if (ok) {
-                                // Gather current installed envs
+                                g_lastImportedRecipe = recipe;
                                 auto curEnvsStr = detectInstalledEnvironments();
                                 auto curEnvs = parseEnvironmentsFromJson("{\"environments\":" + curEnvsStr + "}");
                                 auto diff = lazyenv::RecipeManager::analyzeRecipeDiff(recipe, curEnvs);
@@ -815,7 +916,18 @@ std::string handleWebMessage(const std::string& message) {
                                     if (i + 1 < diff.installedPackages.size()) os << ",";
                                 }
                                 os << "],\"varsCount\":" << diff.varsToApply.size()
-                                   << ",\"pathsCount\":" << diff.pathsToApply.size() << "}}";
+                                   << ",\"pathsCount\":" << diff.pathsToApply.size()
+                                   << ",\"configsCount\":" << diff.configsToApply.size()
+                                   << ",\"configs\":[";
+                                for (size_t i = 0; i < diff.configsToApply.size(); ++i) {
+                                    const auto& c = diff.configsToApply[i];
+                                    os << "{\"category\":\"" << jsonEscape(c.category) << "\","
+                                       << "\"name\":\"" << jsonEscape(c.name) << "\","
+                                       << "\"relativePath\":\"" << jsonEscape(c.relativePath) << "\"}";
+                                    if (i + 1 < diff.configsToApply.size()) os << ",";
+                                }
+                                os << "],\"extensionsCount\":" << diff.extensionsToApply.size()
+                                   << "}}";
                                 g_webview.postMessage(os.str());
                             } else {
                                 g_webview.postMessage("{\"action\":\"recipeDiffReport\",\"success\":false}");
@@ -852,6 +964,10 @@ std::string handleWebMessage(const std::string& message) {
                     itm.source = "winget";
                     diff.missingPackages.push_back(itm);
                 }
+                diff.configsToApply = g_lastImportedRecipe.configFiles;
+                diff.extensionsToApply = g_lastImportedRecipe.ideExtensions;
+                diff.varsToApply = g_lastImportedRecipe.environmentVariables;
+                diff.pathsToApply = g_lastImportedRecipe.paths;
 
                 std::string snapId;
                 bool ok = lazyenv::RecipeManager::deployRecipe(
