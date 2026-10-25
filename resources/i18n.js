@@ -244,6 +244,26 @@
             "doctor.cleanShadowedConfirm":      "Remove shadowed directory '{0}' from User PATH?",
             "doctor.cleanShadowedSuccess":      "Shadowed residue removed! Health score updated.",
 
+            // PATH Doctor v0.8.14 Enhancements
+            "doctor.statusScanning":            "Scanning system and user PATH variables & 58 developer tools...",
+            "doctor.decisionGuideToggle":       "❓ What should I do? Keep or delete, and what is the impact?",
+            "doctor.decisionGuideP1":           "1. Is keeping both safe? Yes. Windows runs the active version; shadowed versions stay dormant. Click 'Acknowledge' to confirm intentional co-existence and restore score to 100.",
+            "doctor.decisionGuideP2":           "2. Will deleting shadowed paths break VS Code, projects, or AI Agents (Codex/Cursor)? Absolutely not! Modern IDEs and agents use project virtualenvs (.venv) or exact paths, completely unaffected by global PATH.",
+            "doctor.decisionGuideP3":           "3. When should I delete? If the shadowed path is an obsolete residue or causing package installation confusion, click 'Clean Residue' to keep your environment pristine.",
+            "doctor.coreLockBadge":             "Core System · Protected",
+            "doctor.coreLockAlert":             "This directory is essential to Windows operation. It is locked and protected to prevent system failure.",
+            "doctor.purposeSystem32":           "Windows core system binaries (console, drivers, services) - essential system component, locked",
+            "doctor.purposeWbem":               "WMI Windows Management Instrumentation core library - system component, locked",
+            "doctor.purposePowershell":         "Windows PowerShell built-in runtime environment",
+            "doctor.purposePythonScripts":      "Global Python pip executables & script binaries directory",
+            "doctor.purposePythonMain":         "Python primary interpreter and standard library directory",
+            "doctor.purposeJavaPath":           "Oracle Java shortcut symbolic links directory",
+            "doctor.purposeGit":                "Git distributed version control core binaries",
+            "doctor.purposeNode":               "Node.js runtime environment and npm global packages directory",
+            "doctor.purposeDocker":             "Docker Desktop virtualization CLI tools",
+            "doctor.purposeUserApps":           "User-level application binaries directory",
+            "doctor.purposeGeneric":            "Third-party application or user development directory",
+
             // Recipes Hub
             "recipes.title":                    "Environment Recipes & Stacks (.lazyenv)",
             "recipes.desc":                     "Deploy standardized development stacks with 1 click, or export/import team recipes.",
@@ -896,6 +916,26 @@
             "doctor.tagSystem":                 "系统",
             "doctor.cleanShadowedConfirm":      "确定要将处于休眠遮蔽状态的目录 “{0}” 从用户 PATH 中移除吗？",
             "doctor.cleanShadowedSuccess":      "已成功清除被遮蔽的冗余残留路径！健康分已更新。",
+
+            // PATH Doctor v0.8.14 体验升级
+            "doctor.statusScanning":            "正在全面体检系统与用户 PATH 变量及 58 款工具运行状态...",
+            "doctor.decisionGuideToggle":       "❓ 我该怎么处理？保留还是删除会有什么影响？",
+            "doctor.decisionGuideP1":           "1. 保留两个有影响吗？不会。Windows 默认按优先级运行活跃版本，被遮蔽版本处于休眠状态。如果您需要共存，点击“确认为预设版本”，LazyEnv 将其标记为正常共存，健康分即刻恢复 100 满分。",
+            "doctor.decisionGuideP2":           "2. 删掉被遮蔽的会影响 VS Code、独立项目或 AI Agent (如 Codex/Cursor) 吗？绝不会！现代 IDE 和 Agent 执行项目时均通过虚拟环境 (.venv) 或显式绝对路径调用，根本不依赖全局命令行 PATH。",
+            "doctor.decisionGuideP3":           "3. 什么时候应该清理？如果被遮蔽的是很久以前残留的废弃旧版本，或者曾遇到 pip 装包后找不到命令，推荐点击“清理被遮蔽残留”，彻底净化环境。",
+            "doctor.coreLockBadge":             "系统核心·锁定保护",
+            "doctor.coreLockAlert":             "此目录为 Windows 系统核心运转命脉，已受锁定保护，严禁删除以防系统崩溃。",
+            "doctor.purposeSystem32":           "Windows 系统级核心组件（控制台、驱动与系统服务），系统命脉，严禁删除",
+            "doctor.purposeWbem":               "WMI Windows 管理规范核心库，底层管理协议组件，严禁删除",
+            "doctor.purposePowershell":         "Windows 内置默认 PowerShell 运行环境",
+            "doctor.purposePythonScripts":      "Python pip 安装的全局命令行工具与脚本存放目录",
+            "doctor.purposePythonMain":         "Python 主解释器与标准库程序目录",
+            "doctor.purposeJavaPath":           "Oracle 官方快捷启动软链接 (旧版 Java 入口)",
+            "doctor.purposeGit":                "Git 分布式版本控制核心命令程序",
+            "doctor.purposeNode":               "Node.js 运行时环境与 npm 全局模块包目录",
+            "doctor.purposeDocker":             "Docker Desktop 虚拟化容器命令接口",
+            "doctor.purposeUserApps":           "用户个人独立安装的轻量级免管理员应用目录",
+            "doctor.purposeGeneric":            "第三方应用组件或用户个人开发目录",
 
             // Recipes Hub
             "recipes.title":                    "开发环境配方与开发栈 (.lazyenv)",

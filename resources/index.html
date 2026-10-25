@@ -115,7 +115,7 @@
         </div>
 
         <div class="sidebar__footer">
-            <span class="sidebar__version">LazyEnv v0.8.13</span>
+            <span class="sidebar__version">LazyEnv v0.8.14</span>
             <select class="sidebar__lang-select" id="langSelect">
                 <option value="en">English</option>
                 <option value="zh-CN">中文</option>
@@ -430,9 +430,11 @@
                                 <span class="badge" id="doctorGradeBadge" style="display:none;">--</span>
                             </div>
                             <div class="text-secondary" style="font-size:12px; margin-top:4px;" id="doctorStatusText" data-i18n="doctor.statusInit">Click 'Run Inspection' to analyze PATH health, dead links & command shadowing.</div>
-                            <div style="margin-top:6px;">
-                                <button class="btn-link" id="btnToggleScoreBreakdown" style="display:none; font-size:11px; color:var(--accent); background:none; border:none; cursor:pointer; padding:0; text-decoration:underline;">
-                                    <span data-i18n="doctor.scoreBreakdown">Score Breakdown</span> &darr;
+                            <div style="margin-top:8px;">
+                                <button class="btn-breakdown-pill" id="btnToggleScoreBreakdown" style="display:none;" title="查看扣分诊断明细">
+                                    <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0-1A6 6 0 1 0 8 2a6 6 0 0 0 0 12zm-.5-9h1v1h-1V5zm0 2h1v4h-1V7z"/></svg>
+                                    <span data-i18n="doctor.scoreBreakdown">Score Breakdown</span>
+                                    <span class="btn-breakdown-chevron">▾</span>
                                 </button>
                             </div>
                         </div>
@@ -627,7 +629,7 @@
                         <div class="flex-between">
                             <div>
                                 <div style="font-weight:600;font-size:13px;" data-i18n="settings.prefAbout">About LazyEnv</div>
-                                <div class="text-secondary" style="font-size:12px;">LazyEnv v0.8.13 • Open-Source Developer Environment Configurator</div>
+                                <div class="text-secondary" style="font-size:12px;">LazyEnv v0.8.14 • Open-Source Developer Environment Configurator</div>
                                 <div class="text-secondary" style="font-size:11px; margin-top:4px;">Co-developed with Codex & DSH</div>
                             </div>
                             <button class="btn btn--sm" id="btnOpenGitHub" data-i18n="settings.prefOpenRepo">GitHub Repository</button>

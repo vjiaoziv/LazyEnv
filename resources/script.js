@@ -147,6 +147,10 @@
                     var s = btnDoc.querySelector("span");
                     if (s) s.textContent = t("doctor.btnRun");
                 }
+                var gFill = document.getElementById("doctorGaugeFill");
+                if (gFill) gFill.classList.remove("doctor-gauge-fill--scanning");
+                var sBadge = document.getElementById("doctorScoreBadge");
+                if (sBadge) sBadge.classList.remove("doctor-gauge-score--pulsing");
                 pathDoctorReport = d.report || null;
                 if (pathDoctorReport) {
                     lastDoctorScore = pathDoctorReport.healthScore;
@@ -2964,6 +2968,74 @@
         });
         return groups;
     }
+    function getPathPurposeExplanation(rawPath) {
+        var p = (rawPath || "").toLowerCase();
+        if (p.includes("system32") || p.includes("syswow64")) {
+            return {
+                purpose: t("doctor.purposeSystem32"),
+                isLocked: true
+            };
+        }
+        if (p.includes("wbem")) {
+            return {
+                purpose: t("doctor.purposeWbem"),
+                isLocked: true
+            };
+        }
+        if (p.includes("windowspowershell")) {
+            return {
+                purpose: t("doctor.purposePowershell"),
+                isLocked: false
+            };
+        }
+        if (p.includes("python") && p.includes("scripts")) {
+            return {
+                purpose: t("doctor.purposePythonScripts"),
+                isLocked: false
+            };
+        }
+        if (p.includes("python") || p.includes("python3")) {
+            return {
+                purpose: t("doctor.purposePythonMain"),
+                isLocked: false
+            };
+        }
+        if (p.includes("oracle") || p.includes("java8path") || p.includes("javapath")) {
+            return {
+                purpose: t("doctor.purposeJavaPath"),
+                isLocked: false
+            };
+        }
+        if (p.includes("git")) {
+            return {
+                purpose: t("doctor.purposeGit"),
+                isLocked: false
+            };
+        }
+        if (p.includes("nodejs") || p.includes("npm") || p.includes("pnpm") || p.includes("yarn")) {
+            return {
+                purpose: t("doctor.purposeNode"),
+                isLocked: false
+            };
+        }
+        if (p.includes("docker")) {
+            return {
+                purpose: t("doctor.purposeDocker"),
+                isLocked: false
+            };
+        }
+        if (p.includes("appdata") || p.includes("programs")) {
+            return {
+                purpose: t("doctor.purposeUserApps"),
+                isLocked: false
+            };
+        }
+        return {
+            purpose: t("doctor.purposeGeneric"),
+            isLocked: false
+        };
+    }
+
     function renderPathExplorerRows() {
         var container = document.getElementById("pathExplorerList");
         if (!container || !pathDoctorReport) return;
@@ -3005,9 +3077,9 @@
         filtered.forEach(function (item) {
             var e = item.entry;
             var sw = detectSoftwareFromPath(e.rawPath);
+            var purp = getPathPurposeExplanation(e.rawPath);
             var parts = e.rawPath.replace(/[\\\/]+$/, "").split(/[\\\/]/);
             var mainDir = parts[parts.length - 1] || e.rawPath;
-            var parentDir = parts.slice(0, parts.length - 1).join("\\");
 
             var statusBadge = '<span class="badge badge--success">' + esc(t("doctor.statusValid")) + '</span>';
             if (!e.exists) {
@@ -3020,19 +3092,28 @@
                 ? '<span class="badge" style="background:rgba(96,205,255,0.12); color:var(--accent);">' + esc(t("doctor.tagSystem")) + '</span>'
                 : '<span class="badge" style="background:rgba(255,255,255,0.06); color:var(--text-secondary);">' + esc(t("doctor.tagUser")) + '</span>';
 
-            html += '<div class="path-row-item" data-path="' + esc(e.rawPath) + '" data-scope="' + (item.isSys ? "system" : "user") + '">' +
+            var lockBadge = purp.isLocked
+                ? ' <span class="badge--core-locked">&#128274; ' + esc(t("doctor.coreLockBadge")) + '</span>'
+                : '';
+
+            var removeBtnHtml = purp.isLocked
+                ? '<button class="btn btn--xs btn-row-remove btn-row-locked" title="' + esc(t("doctor.coreLockBadge")) + '" style="color:var(--text-tertiary);">&#128274;</button>'
+                : '<button class="btn btn--xs btn-row-remove" title="' + esc(t("doctor.btnRemove")) + '" style="color:var(--status-error);">&#10005;</button>';
+
+            html += '<div class="path-row-item' + (purp.isLocked ? ' path-row-item--locked' : '') + '" data-path="' + esc(e.rawPath) + '" data-scope="' + (item.isSys ? "system" : "user") + '" data-locked="' + (purp.isLocked ? "1" : "0") + '">' +
                 '<div class="path-row-rank">#' + (item.rank < 10 ? '0' : '') + item.rank + '</div>' +
                 '<div class="path-row-software-badge">' + sw.icon + '<span>' + esc(sw.name) + '</span></div>' +
                 '<div class="path-row-content">' +
-                '<div class="path-row-dir-main">' + esc(mainDir) + ' ' + scopeBadge + ' ' + statusBadge + '</div>' +
-                '<div class="path-row-dir-sub" title="' + esc(e.rawPath) + '">' + esc(parentDir ? parentDir + "\\" : e.rawPath) + '</div>' +
+                '<div class="path-row-dir-main">' + esc(mainDir) + ' ' + scopeBadge + ' ' + statusBadge + lockBadge + '</div>' +
+                '<div class="path-row-purpose">&#128214; ' + esc(purp.purpose) + '</div>' +
+                '<div class="path-row-dir-sub" title="' + esc(e.rawPath) + '">' + esc(e.rawPath) + '</div>' +
                 '</div>' +
                 '<div class="path-row-actions">' +
                 '<button class="btn btn--xs btn-row-top" title="' + esc(t("doctor.moveTop")) + '">' + esc(t("doctor.moveTop")) + '</button>' +
                 '<button class="btn btn--xs btn-row-up" title="' + esc(t("doctor.moveUp")) + '">&#9650;</button>' +
                 '<button class="btn btn--xs btn-row-down" title="' + esc(t("doctor.moveDown")) + '">&#9660;</button>' +
                 '<button class="btn btn--xs btn-row-reveal" title="' + esc(t("doctor.btnReveal")) + '">&#128194;</button>' +
-                '<button class="btn btn--xs btn-row-remove" title="' + esc(t("doctor.btnRemove")) + '" style="color:var(--status-error);">&#10005;</button>' +
+                removeBtnHtml +
                 '</div>' +
                 '</div>';
         });
@@ -3076,6 +3157,11 @@
                 var row = btn.closest(".path-row-item");
                 var p = row.getAttribute("data-path");
                 var sc = row.getAttribute("data-scope");
+                var isLock = row.getAttribute("data-locked") === "1";
+                if (isLock) {
+                    showToast(t("doctor.coreLockAlert"), "error");
+                    return;
+                }
                 showDialog(
                     t("doctor.btnRemove"),
                     t("doctor.removeConfirm", p),
@@ -3093,7 +3179,7 @@
             });
         });
     }
-    function renderDoctorReport(rep) {
+        function renderDoctorReport(rep) {
         var statusText = document.getElementById("doctorStatusText");
         var metricsGrid = document.getElementById("doctorMetricsGrid");
         var btnClean = document.getElementById("btnAutoCleanPath");
@@ -3238,6 +3324,16 @@
                         '</div>' +
                         '</div>' +
                         '<div class="eco-tip-box">&#128161; ' + esc(t(group.descKey, group.name)) + '</div>' +
+                        '<div class="conflict-guide-box" style="margin-top:6px;">' +
+                        '<button class="conflict-guide-toggle">' +
+                        '<span>' + esc(t("doctor.decisionGuideToggle")) + '</span>' +
+                        '<span class="btn-breakdown-chevron">▾</span>' +
+                        '</button>' +
+                        '<div class="conflict-guide-content">' +
+                        '<p><strong>' + esc(t("doctor.decisionGuideP1")) + '</strong></p>' +
+                        '<p>' + esc(t("doctor.decisionGuideP2")) + '</p>' +
+                        '<p>' + esc(t("doctor.decisionGuideP3")) + '</p>' +
+                        '</div></div>' +
                         '<div class="eco-actions">';
 
                     if (!allAcked) {
@@ -3258,6 +3354,20 @@
                 conflictList.innerHTML = cHtml;
 
                 // Action Listeners on Conflict Cards
+                conflictList.querySelectorAll(".conflict-guide-toggle").forEach(function (toggle) {
+                    toggle.addEventListener("click", function () {
+                        var box = toggle.nextElementSibling;
+                        if (box) {
+                            var isOpen = (box.style.display === "block");
+                            box.style.display = isOpen ? "none" : "block";
+                            var chev = toggle.querySelector(".btn-breakdown-chevron");
+                            if (chev) {
+                                chev.style.transform = isOpen ? "rotate(0deg)" : "rotate(180deg)";
+                            }
+                        }
+                    });
+                });
+
                 conflictList.querySelectorAll(".btn-reveal-path").forEach(function (btn) {
                     btn.addEventListener("click", function () {
                         var p = btn.getAttribute("data-path");
@@ -3396,7 +3506,9 @@
         btnToggleBreakdown.addEventListener("click", function () {
             var drawer = document.getElementById("doctorScoreBreakdownDrawer");
             if (drawer) {
-                drawer.style.display = (drawer.style.display === "none" || !drawer.style.display) ? "block" : "none";
+                var isOpen = (drawer.style.display === "block");
+                drawer.style.display = isOpen ? "none" : "block";
+                btnToggleBreakdown.classList.toggle("btn-breakdown-pill--open", !isOpen);
             }
         });
     }
@@ -3558,6 +3670,17 @@
             var s = btnRunDoc.querySelector("span");
             if (s) s.textContent = t("doctor.btnRunning");
             isDoctorRunning = true;
+
+            var gFill = document.getElementById("doctorGaugeFill");
+            if (gFill) gFill.classList.add("doctor-gauge-fill--scanning");
+            var sBadge = document.getElementById("doctorScoreBadge");
+            if (sBadge) {
+                sBadge.classList.add("doctor-gauge-score--pulsing");
+                sBadge.textContent = "--";
+            }
+            var sStatus = document.getElementById("doctorStatusText");
+            if (sStatus) sStatus.textContent = t("doctor.statusScanning");
+
             sendNative({ action: "pathDoctorDiagnose" });
         });
     }

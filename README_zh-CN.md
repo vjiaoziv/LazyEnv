@@ -3,7 +3,7 @@
 [English](README.md) | **中文**
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Release-v0.8.13-0078D4?style=flat-square" alt="Release" />
+  <img src="https://img.shields.io/badge/Release-v0.8.14-0078D4?style=flat-square" alt="Release" />
   <img src="https://img.shields.io/badge/Platform-Windows%2010%20%7C%2011-0078D4?style=flat-square&logo=windows" alt="Platform" />
   <img src="https://img.shields.io/badge/C%2B%2B-23-blue?style=flat-square&logo=c%2B%2B" alt="C++23" />
   <img src="https://img.shields.io/badge/UI-WebView2%20%7C%20Fluent-success?style=flat-square" alt="UI" />
@@ -14,7 +14,7 @@
 
 **专为 Windows 开发者打造的开箱即用环境管家、PATH 深度治理体检中心、国内极速换源与多源更新中心。**
 
-当前版本：**v0.8.13**
+当前版本：**v0.8.14**
 
 ---
 

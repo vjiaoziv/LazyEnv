@@ -85,7 +85,7 @@ int main() {
         }
     };
 
-    std::cout << "=== Running LazyEnv v0.8.13 Automated Verification Suite ===\n\n";
+    std::cout << "=== Running LazyEnv v0.8.14 Automated Verification Suite ===\n\n";
 
     // -------------------------------------------------------------
     // Test 1: extractJsonArray parser robustness
@@ -212,7 +212,7 @@ int main() {
     std::cout << "\n[Test Group 5: Version Consistency]\n";
     {
         std::string ver = LAZYENV_VERSION_STRING;
-        test("Version is 0.8.13", ver == "0.8.13");
+        test("Version is 0.8.14", ver == "0.8.14");
     }
 
     std::cout << "\n=============================================================\n";
