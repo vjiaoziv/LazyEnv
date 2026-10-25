@@ -115,7 +115,7 @@
         </div>
 
         <div class="sidebar__footer">
-            <span class="sidebar__version">LazyEnv v0.8.12</span>
+            <span class="sidebar__version">LazyEnv v0.8.13</span>
             <select class="sidebar__lang-select" id="langSelect">
                 <option value="en">English</option>
                 <option value="zh-CN">中文</option>
@@ -411,70 +411,141 @@
                 <h1 class="page-title" data-i18n="doctor.pageTitle">PATH Doctor Health Center</h1>
                 <p class="page-desc" data-i18n="doctor.pageDesc">Inspect, clean duplicates & dead paths, and resolve command collisions across Windows PATH.</p>
 
+                <!-- 1. Health Dashboard Card -->
                 <div class="card-box mb-lg" id="pathDoctorBox">
-                        <div class="flex-between mb-sm">
-                            <div class="flex-align-center" style="gap:12px;">
-                                <div class="health-score-badge" id="doctorScoreBadge">--</div>
-                                <div>
-                                    <div style="font-weight:600; font-size:15px;" data-i18n="doctor.title">PATH Doctor Health Inspector</div>
-                                    <div class="text-secondary" style="font-size:12px;" id="doctorStatusText" data-i18n="doctor.statusInit">Click 'Run Inspection' to analyze PATH health, dead links & command shadowing.</div>
-                                </div>
+                    <div class="doctor-dashboard-header">
+                        <div class="doctor-gauge-wrap">
+                            <svg class="doctor-gauge-svg" width="84" height="84" viewBox="0 0 100 100">
+                                <circle class="doctor-gauge-bg" cx="50" cy="50" r="42"></circle>
+                                <circle class="doctor-gauge-fill" id="doctorGaugeFill" cx="50" cy="50" r="42"></circle>
+                            </svg>
+                            <div class="doctor-gauge-center">
+                                <span class="doctor-gauge-score" id="doctorScoreBadge">--</span>
                             </div>
-                            <div class="toolbar" style="margin-bottom:0">
-                                <button class="btn btn--sm" id="btnRunDoctor">
-                                    <svg class="btn__icon-spin" width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-                                        <path fill-rule="evenodd" d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2v1z"/>
-                                        <path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466z"/>
-                                    </svg>
-                                    <span data-i18n="doctor.btnRun">Run Inspection</span>
-                                </button>
-                                <button class="btn btn--sm btn--accent" id="btnAutoCleanPath" style="display:none">
-                                    <span data-i18n="doctor.btnAutoClean">Auto Clean & Fix</span>
-                                </button>
-                                <button class="btn btn--sm" id="btnExportDoctorReport" style="display:none">
-                                    <span data-i18n="doctor.btnExportReport">Export Report</span>
+                        </div>
+
+                        <div class="doctor-header-content">
+                            <div class="flex-align-center" style="gap:8px; flex-wrap:wrap;">
+                                <div style="font-weight:600; font-size:16px;" data-i18n="doctor.title">PATH Doctor Health Inspector</div>
+                                <span class="badge" id="doctorGradeBadge" style="display:none;">--</span>
+                            </div>
+                            <div class="text-secondary" style="font-size:12px; margin-top:4px;" id="doctorStatusText" data-i18n="doctor.statusInit">Click 'Run Inspection' to analyze PATH health, dead links & command shadowing.</div>
+                            <div style="margin-top:6px;">
+                                <button class="btn-link" id="btnToggleScoreBreakdown" style="display:none; font-size:11px; color:var(--accent); background:none; border:none; cursor:pointer; padding:0; text-decoration:underline;">
+                                    <span data-i18n="doctor.scoreBreakdown">Score Breakdown</span> &darr;
                                 </button>
                             </div>
                         </div>
 
-                        <!-- 4 Diagnostic Metric Cards -->
-                        <div class="doctor-metrics-grid" id="doctorMetricsGrid" style="display:none">
-                            <div class="metric-mini-card">
-                                <div class="metric-mini-card__label" data-i18n="doctor.validLabel">Valid Entries</div>
-                                <div class="metric-mini-card__value text-success" id="docValidCount">0</div>
-                            </div>
-                            <div class="metric-mini-card">
-                                <div class="metric-mini-card__label" data-i18n="doctor.deadLabel">Dead Paths</div>
-                                <div class="metric-mini-card__value text-danger" id="docDeadCount">0</div>
-                            </div>
-                            <div class="metric-mini-card">
-                                <div class="metric-mini-card__label" data-i18n="doctor.dupLabel">Duplicates</div>
-                                <div class="metric-mini-card__value text-warning" id="docDupCount">0</div>
-                            </div>
-                            <div class="metric-mini-card">
-                                <div class="metric-mini-card__label" data-i18n="doctor.conflictLabel">Conflicts</div>
-                                <div class="metric-mini-card__value text-accent" id="docConflictCount">0</div>
-                            </div>
-                        </div>
-
-                        <!-- PATH Length & Buffer Monitor -->
-                        <div class="card-box mb-md" id="doctorPathLengthBox" style="display:none; padding:12px 16px; background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-radius:var(--radius-sm); margin-top:14px;">
-                            <div class="flex-between mb-xs">
-                                <span style="font-size:12px; font-weight:600;" data-i18n="doctor.pathLengthTitle">PATH Length & Buffer Monitor</span>
-                                <span style="font-size:12px; font-weight:600;" id="docPathLengthStatus">Normal</span>
-                            </div>
-                            <div style="display:flex; flex-wrap:wrap; gap:16px; font-size:12px; color:var(--text-secondary);">
-                                <span id="docUserPathLen">User PATH: 0 chars</span>
-                                <span id="docSysPathLen">System PATH: 0 chars</span>
-                                <span id="docTotalPathLen">Total: 0 chars</span>
-                            </div>
-                        </div>
-
-                        <!-- Detailed Issues & Conflict Drawer -->
-                        <div id="doctorDetailsDrawer" style="display:none; margin-top:14px; border-top:1px solid var(--border-subtle); padding-top:12px;">
-                            <div id="doctorIssuesList"></div>
+                        <div class="doctor-header-actions">
+                            <button class="btn btn--sm btn--accent" id="btnSmartFix" style="display:none;">
+                                <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M7.657 6.247c.11-.33.576-.33.686 0l.645 1.937a2.89 2.89 0 0 0 1.829 1.828l1.936.645c.33.11.33.576 0 .686l-1.937.645a2.89 2.89 0 0 0-1.828 1.829l-.645 1.936a.361.361 0 0 1-.686 0l-.645-1.937a2.89 2.89 0 0 0-1.828-1.828l-1.937-.645a.361.361 0 0 1 0-.686l1.937-.645a2.89 2.89 0 0 0 1.828-1.828l.645-1.937zM3.794 1.148a.217.217 0 0 1 .412 0l.387 1.162c.173.518.579.924 1.097 1.097l1.162.387a.217.217 0 0 1 0 .412l-1.162.387a1.734 1.734 0 0 0-1.097 1.097l-.387 1.162a.217.217 0 0 1-.412 0l-.387-1.162A1.734 1.734 0 0 0 2.31 4.593l-1.162-.387a.217.217 0 0 1 0-.412l1.162-.387a1.734 1.734 0 0 0 1.097-1.097l.387-1.162z"/></svg>
+                                <span data-i18n="doctor.btnSmartFix">One-Click Smart Fix</span>
+                            </button>
+                            <button class="btn btn--sm" id="btnRunDoctor">
+                                <svg class="btn__icon-spin" width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+                                    <path fill-rule="evenodd" d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2v1z"/>
+                                    <path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466z"/>
+                                </svg>
+                                <span data-i18n="doctor.btnRun">Run Inspection</span>
+                            </button>
+                            <button class="btn btn--sm" id="btnExportDoctorReport" style="display:none">
+                                <span data-i18n="doctor.btnExportReport">Export Report</span>
+                            </button>
                         </div>
                     </div>
+
+                    <!-- Deductions Breakdown Panel -->
+                    <div id="doctorScoreBreakdownDrawer" style="display:none; margin-top:14px; padding:12px 14px; background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-radius:var(--radius-sm);">
+                        <div style="font-weight:600; font-size:12px; margin-bottom:8px;" data-i18n="doctor.scoreBreakdownTitle">Diagnostic Deductions</div>
+                        <div id="doctorScoreBreakdownList" style="font-size:12px; color:var(--text-secondary); display:flex; flex-direction:column; gap:4px;"></div>
+                    </div>
+
+                    <!-- 4 Diagnostic Metric Cards -->
+                    <div class="doctor-metrics-grid" id="doctorMetricsGrid" style="display:none">
+                        <div class="metric-mini-card" id="cardMetricValid" style="cursor:pointer;" title="Filter Valid">
+                            <div class="metric-mini-card__label" data-i18n="doctor.validLabel">Valid Entries</div>
+                            <div class="metric-mini-card__value text-success" id="docValidCount">0</div>
+                        </div>
+                        <div class="metric-mini-card" id="cardMetricDead" style="cursor:pointer;" title="Filter Dead">
+                            <div class="metric-mini-card__label" data-i18n="doctor.deadLabel">Dead Paths</div>
+                            <div class="metric-mini-card__value text-danger" id="docDeadCount">0</div>
+                        </div>
+                        <div class="metric-mini-card" id="cardMetricDup" style="cursor:pointer;" title="Filter Duplicates">
+                            <div class="metric-mini-card__label" data-i18n="doctor.dupLabel">Duplicates</div>
+                            <div class="metric-mini-card__value text-warning" id="docDupCount">0</div>
+                        </div>
+                        <div class="metric-mini-card" id="cardMetricConflict" style="cursor:pointer;" title="Filter Conflicts">
+                            <div class="metric-mini-card__label" data-i18n="doctor.conflictLabel">Conflicts</div>
+                            <div class="metric-mini-card__value text-accent" id="docConflictCount">0</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 2. Ecosystem Conflicts & Shadowing Governance Section -->
+                <div class="card-box mb-lg" id="doctorConflictCardBox" style="display:none;">
+                    <div class="flex-between mb-sm" style="flex-wrap:wrap; gap:8px;">
+                        <div>
+                            <div style="font-weight:600; font-size:15px; color:var(--accent);" data-i18n="doctor.conflictsTitle">Command Shadowing & Binary Conflicts</div>
+                            <div class="text-secondary" style="font-size:12px; margin-top:2px;">Resolve multiple overlapping tool installations and bypass shadowing.</div>
+                        </div>
+                        <div id="doctorConflictStatsBadge"></div>
+                    </div>
+                    <div id="doctorConflictList" style="display:flex; flex-direction:column; gap:12px; margin-top:12px;"></div>
+                </div>
+
+                <!-- 3. PATH Full Explorer & Reorder Manager Section -->
+                <div class="card-box mb-lg" id="doctorExplorerCardBox" style="display:none;">
+                    <div class="flex-between mb-sm" style="flex-wrap:wrap; gap:8px;">
+                        <div>
+                            <div style="font-weight:600; font-size:15px;" id="explorerTitleText" data-i18n="doctor.explorerTitle">PATH Environment Variable Explorer</div>
+                            <div class="text-secondary" style="font-size:12px; margin-top:2px;" data-i18n="doctor.explorerDesc">Browse all directories in order of Windows search precedence. Reorder, add, or remove paths.</div>
+                        </div>
+                        <div class="toolbar" style="margin-bottom:0;">
+                            <button class="btn btn--sm btn--accent" id="btnAddPathExplorer">
+                                <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor"><path d="M8 2a.5.5 0 0 1 .5.5v5h5a.5.5 0 0 1 0 1h-5v5a.5.5 0 0 1-1 0v-5h-5a.5.5 0 0 1 0-1h5v-5A.5.5 0 0 1 8 2z"/></svg>
+                                <span data-i18n="doctor.btnAddPath">Add Directory</span>
+                            </button>
+                            <button class="btn btn--sm" id="btnAutoCleanPath" style="display:none;">
+                                <span data-i18n="doctor.btnAutoClean">Auto Clean & Fix</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="path-explorer-filter-bar">
+                        <div class="toolbar__search-wrap" style="flex:1; min-width:200px;">
+                            <svg class="search-icon" width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85zm-5.242.156a5 5 0 1 1 0-10 5 5 0 0 1 0 10z"/></svg>
+                            <input type="text" class="toolbar__search" id="pathExplorerSearch" data-i18n-placeholder="doctor.searchPlaceholder" placeholder="Search directory or tool (e.g. Python, Git, System32)...">
+                        </div>
+                        <div class="filter-chips-row" id="pathScopeFilterChips">
+                            <button class="filter-chip filter-chip--active" data-scope="all">全部 (0)</button>
+                            <button class="filter-chip" data-scope="user">用户 (0)</button>
+                            <button class="filter-chip" data-scope="system">系统 (0)</button>
+                            <button class="filter-chip" data-scope="issues">异常项 (0)</button>
+                        </div>
+                    </div>
+
+                    <div class="path-explorer-list" id="pathExplorerList"></div>
+                </div>
+
+                <!-- 4. PATH Length & Buffer Monitor Card -->
+                <div class="card-box mb-lg" id="doctorPathLengthBox" style="display:none;">
+                    <div class="flex-between mb-xs">
+                        <div class="flex-align-center" style="gap:8px;">
+                            <span style="font-size:13px; font-weight:600;" data-i18n="doctor.pathLengthTitle">PATH Length & Buffer Monitor</span>
+                            <span class="badge" id="docPathLengthBadge">Normal</span>
+                        </div>
+                        <span style="font-size:12px; font-weight:600;" id="docPathLengthStatus">Normal</span>
+                    </div>
+                    <div class="buffer-bar-track mb-sm">
+                        <div class="buffer-bar-fill" id="docBufferBarFill" style="width:20%;"></div>
+                    </div>
+                    <div style="display:flex; flex-wrap:wrap; justify-content:space-between; gap:16px; font-size:12px; color:var(--text-secondary);">
+                        <span id="docUserPathLen">User PATH: 0 chars</span>
+                        <span id="docSysPathLen">System PATH: 0 chars</span>
+                        <span id="docTotalPathLen">Total: 0 chars</span>
+                    </div>
+                </div>
             </div>
 
             <!-- ==================== SETTINGS ==================== -->
@@ -556,7 +627,7 @@
                         <div class="flex-between">
                             <div>
                                 <div style="font-weight:600;font-size:13px;" data-i18n="settings.prefAbout">About LazyEnv</div>
-                                <div class="text-secondary" style="font-size:12px;">LazyEnv v0.8.12 • Open-Source Developer Environment Configurator</div>
+                                <div class="text-secondary" style="font-size:12px;">LazyEnv v0.8.13 • Open-Source Developer Environment Configurator</div>
                                 <div class="text-secondary" style="font-size:11px; margin-top:4px;">Co-developed with Codex & DSH</div>
                             </div>
                             <button class="btn btn--sm" id="btnOpenGitHub" data-i18n="settings.prefOpenRepo">GitHub Repository</button>

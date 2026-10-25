@@ -81,6 +81,15 @@ public:
 
     // Remove a directory from User PATH
     static bool removeFromPath(const std::string& targetPath, RollbackManager& rollback, std::string& outSnapshotId);
+
+    // Reorder a path entry within User or System PATH ("up", "down", "top", "bottom")
+    static bool reorderPath(const std::string& targetPath, const std::string& direction, bool isSystem, RollbackManager& rollback, std::string& outSnapshotId);
+
+    // Add a directory to User or System PATH with snapshot protection
+    static bool addPath(const std::string& targetPath, bool isSystem, RollbackManager& rollback, std::string& outSnapshotId);
+
+    // Remove a directory from User or System PATH with snapshot protection
+    static bool removePath(const std::string& targetPath, bool isSystem, RollbackManager& rollback, std::string& outSnapshotId);
 };
 
 } // namespace lazyenv

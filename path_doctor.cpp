@@ -344,11 +344,17 @@ AutoCleanResult PathDoctor::autoClean(bool cleanUser, bool cleanSystem, Rollback
 }
 
 static std::string getDirectoryPart(const std::string& path) {
+    if (path.empty()) return {};
     std::filesystem::path p(utf8ToWide(path));
-    if (std::filesystem::is_directory(p)) {
+    std::error_code ec;
+    if (std::filesystem::is_directory(p, ec)) {
         return path;
     }
-    return wideToUtf8(p.parent_path().wstring());
+    std::string ext = toLower(p.extension().string());
+    if (ext == ".exe" || ext == ".cmd" || ext == ".bat" || ext == ".com" || std::filesystem::is_regular_file(p, ec)) {
+        return wideToUtf8(p.parent_path().wstring());
+    }
+    return path;
 }
 
 bool PathDoctor::prioritizePath(const std::string& targetPath, RollbackManager& rollback, std::string& outSnapshotId) {
@@ -456,28 +462,153 @@ bool PathDoctor::switchActiveVersion(
 }
 
 bool PathDoctor::removeFromPath(const std::string& targetPath, RollbackManager& rollback, std::string& outSnapshotId) {
+    return removePath(targetPath, false, rollback, outSnapshotId);
+}
+
+bool PathDoctor::reorderPath(
+    const std::string& targetPath,
+    const std::string& direction,
+    bool isSystem,
+    RollbackManager& rollback,
+    std::string& outSnapshotId)
+{
     std::string dir = getDirectoryPart(targetPath);
     if (dir.empty()) return false;
 
+    if (isSystem && !isProcessElevated()) {
+        return false;
+    }
+
     try {
-        outSnapshotId = rollback.createSnapshot("PATH Doctor: Remove " + dir);
+        std::string scopeName = isSystem ? "System" : "User";
+        outSnapshotId = rollback.createSnapshot("PATH Doctor: Reorder (" + direction + ") " + dir + " in " + scopeName + " PATH");
     } catch (...) {
         outSnapshotId = "";
     }
 
-    std::string raw = RollbackManager::readEnvVariable("Path", false);
+    std::string raw = RollbackManager::readEnvVariable("Path", isSystem);
+    auto tokens = splitPath(raw);
+    std::string normTarget = normalizePath(expandPath(dir));
+
+    int targetIdx = -1;
+    for (size_t i = 0; i < tokens.size(); ++i) {
+        if (normalizePath(expandPath(tokens[i])) == normTarget) {
+            targetIdx = static_cast<int>(i);
+            break;
+        }
+    }
+    if (targetIdx == -1) return false;
+
+    if (direction == "top") {
+        std::string item = tokens[targetIdx];
+        tokens.erase(tokens.begin() + targetIdx);
+        tokens.insert(tokens.begin(), item);
+    } else if (direction == "bottom") {
+        std::string item = tokens[targetIdx];
+        tokens.erase(tokens.begin() + targetIdx);
+        tokens.push_back(item);
+    } else if (direction == "up") {
+        if (targetIdx > 0) {
+            std::swap(tokens[targetIdx], tokens[targetIdx - 1]);
+        }
+    } else if (direction == "down") {
+        if (targetIdx + 1 < static_cast<int>(tokens.size())) {
+            std::swap(tokens[targetIdx], tokens[targetIdx + 1]);
+        }
+    }
+
+    std::string newPath;
+    for (size_t i = 0; i < tokens.size(); ++i) {
+        if (i > 0) newPath += ';';
+        newPath += tokens[i];
+    }
+
+    bool ok = RollbackManager::writeEnvVariable("Path", newPath, REG_EXPAND_SZ, isSystem);
+    if (ok) {
+        RollbackManager::broadcastEnvironmentChange();
+    }
+    return ok;
+}
+
+bool PathDoctor::addPath(
+    const std::string& targetPath,
+    bool isSystem,
+    RollbackManager& rollback,
+    std::string& outSnapshotId)
+{
+    std::string dir = getDirectoryPart(targetPath);
+    if (dir.empty()) return false;
+
+    if (isSystem && !isProcessElevated()) {
+        return false;
+    }
+
+    try {
+        std::string scopeName = isSystem ? "System" : "User";
+        outSnapshotId = rollback.createSnapshot("PATH Doctor: Add " + dir + " to " + scopeName + " PATH");
+    } catch (...) {
+        outSnapshotId = "";
+    }
+
+    std::string raw = RollbackManager::readEnvVariable("Path", isSystem);
+    auto tokens = splitPath(raw);
+    std::string normTarget = normalizePath(expandPath(dir));
+
+    for (const auto& tok : tokens) {
+        if (normalizePath(expandPath(tok)) == normTarget) {
+            return true; // Already present
+        }
+    }
+
+    std::string newPath = raw;
+    if (!newPath.empty() && newPath.back() != ';') newPath += ';';
+    newPath += dir;
+
+    bool ok = RollbackManager::writeEnvVariable("Path", newPath, REG_EXPAND_SZ, isSystem);
+    if (ok) {
+        RollbackManager::broadcastEnvironmentChange();
+    }
+    return ok;
+}
+
+bool PathDoctor::removePath(
+    const std::string& targetPath,
+    bool isSystem,
+    RollbackManager& rollback,
+    std::string& outSnapshotId)
+{
+    std::string dir = getDirectoryPart(targetPath);
+    if (dir.empty()) return false;
+
+    if (isSystem && !isProcessElevated()) {
+        return false;
+    }
+
+    try {
+        std::string scopeName = isSystem ? "System" : "User";
+        outSnapshotId = rollback.createSnapshot("PATH Doctor: Remove " + dir + " from " + scopeName + " PATH");
+    } catch (...) {
+        outSnapshotId = "";
+    }
+
+    std::string raw = RollbackManager::readEnvVariable("Path", isSystem);
     auto tokens = splitPath(raw);
     std::string normTarget = normalizePath(expandPath(dir));
 
     std::string newPath;
+    bool found = false;
     for (const auto& tok : tokens) {
         if (normalizePath(expandPath(tok)) != normTarget) {
             if (!newPath.empty() && newPath.back() != ';') newPath += ';';
             newPath += tok;
+        } else {
+            found = true;
         }
     }
 
-    bool ok = RollbackManager::writeEnvVariable("Path", newPath, REG_EXPAND_SZ, false);
+    if (!found) return true;
+
+    bool ok = RollbackManager::writeEnvVariable("Path", newPath, REG_EXPAND_SZ, isSystem);
     if (ok) {
         RollbackManager::broadcastEnvironmentChange();
     }

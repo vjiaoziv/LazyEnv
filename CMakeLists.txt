@@ -5,7 +5,7 @@
 cmake_minimum_required(VERSION 3.24)
 
 project(LazyEnv
-    VERSION   0.8.12
+    VERSION   0.8.13
     LANGUAGES CXX
 )
 
@@ -214,9 +214,9 @@ message(STATUS "")
 # ---------------------------------------------------------------------------
 # Test executable
 # ---------------------------------------------------------------------------
-if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_v0812.cpp")
-    add_executable(test_v0812
-        tests/test_v0812.cpp
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_v0813.cpp")
+    add_executable(test_v0813
+        tests/test_v0813.cpp
         installer.cpp
         rollback.cpp
         path_doctor.cpp
@@ -224,12 +224,12 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_v0812.cpp")
         recipe_manager.cpp
         update_manager.cpp
     )
-    target_include_directories(test_v0812 PRIVATE
+    target_include_directories(test_v0813 PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}
         ${WEBVIEW2_INCLUDE_DIR}
         ${WIL_INCLUDE_DIR}
     )
-    target_link_libraries(test_v0812 PRIVATE
+    target_link_libraries(test_v0813 PRIVATE
         Shlwapi.lib
         Ole32.lib
         Shell32.lib
@@ -240,8 +240,8 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_v0812.cpp")
         Shcore.lib
     )
     if(MSVC)
-        target_compile_options(test_v0812 PRIVATE /W4 /utf-8 /permissive- /Zc:__cplusplus)
-        target_compile_definitions(test_v0812 PRIVATE
+        target_compile_options(test_v0813 PRIVATE /W4 /utf-8 /permissive- /Zc:__cplusplus)
+        target_compile_definitions(test_v0813 PRIVATE
             _CRT_SECURE_NO_WARNINGS
             NOMINMAX
             WIN32_LEAN_AND_MEAN

@@ -882,9 +882,11 @@ std::string handleWebMessage(const std::string& message) {
         std::thread([]() {
             try {
                 auto rep = lazyenv::PathDoctor::diagnose();
+                bool isElevated = lazyenv::PathDoctor::isProcessElevated();
                 std::ostringstream os;
                 os << "{\"action\":\"pathDoctorReport\",\"report\":{"
                    << "\"healthScore\":" << rep.healthScore << ","
+                   << "\"isElevated\":" << (isElevated ? "true" : "false") << ","
                    << "\"totalEntries\":" << rep.totalEntries << ","
                    << "\"validEntries\":" << rep.validEntries << ","
                    << "\"deadEntries\":" << rep.deadEntries << ","
@@ -995,6 +997,40 @@ std::string handleWebMessage(const std::string& message) {
         std::string snapId;
         bool ok = lazyenv::PathDoctor::removeFromPath(p, g_rollback, snapId);
         return std::format("{{\"action\":\"removeFromPathResult\",\"success\":{},\"snapshotId\":\"{}\"}}",
+                           ok ? "true" : "false", jsonEscape(snapId));
+    }
+
+    // ------ PATH Doctor: Reorder path entry within User or System PATH ------
+    if (action == "reorderPath") {
+        std::string p = extractJsonValue(message, "path");
+        std::string dir = extractJsonValue(message, "direction");
+        std::string scope = extractJsonValue(message, "scope");
+        bool isSys = (scope == "system");
+        std::string snapId;
+        bool ok = lazyenv::PathDoctor::reorderPath(p, dir, isSys, g_rollback, snapId);
+        return std::format("{{\"action\":\"reorderPathResult\",\"success\":{},\"snapshotId\":\"{}\"}}",
+                           ok ? "true" : "false", jsonEscape(snapId));
+    }
+
+    // ------ PATH Doctor: Add new path to User or System PATH ------
+    if (action == "addPathToEnv") {
+        std::string p = extractJsonValue(message, "path");
+        std::string scope = extractJsonValue(message, "scope");
+        bool isSys = (scope == "system");
+        std::string snapId;
+        bool ok = lazyenv::PathDoctor::addPath(p, isSys, g_rollback, snapId);
+        return std::format("{{\"action\":\"addPathToEnvResult\",\"success\":{},\"snapshotId\":\"{}\"}}",
+                           ok ? "true" : "false", jsonEscape(snapId));
+    }
+
+    // ------ PATH Doctor: Remove path from User or System PATH ------
+    if (action == "removePathFromEnv") {
+        std::string p = extractJsonValue(message, "path");
+        std::string scope = extractJsonValue(message, "scope");
+        bool isSys = (scope == "system");
+        std::string snapId;
+        bool ok = lazyenv::PathDoctor::removePath(p, isSys, g_rollback, snapId);
+        return std::format("{{\"action\":\"removePathFromEnvResult\",\"success\":{},\"snapshotId\":\"{}\"}}",
                            ok ? "true" : "false", jsonEscape(snapId));
     }
 

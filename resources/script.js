@@ -210,6 +210,33 @@
                 }
                 break;
 
+            case "reorderPathResult":
+                if (d.success) {
+                    showToast(t("doctor.moveSuccess"), "success");
+                    sendNative({ action: "inspectPathDoctor" });
+                } else {
+                    showToast(t("doctor.relaunchFailed"), "warning");
+                }
+                break;
+
+            case "addPathToEnvResult":
+                if (d.success) {
+                    showToast(t("doctor.addPathSuccess"), "success");
+                    sendNative({ action: "inspectPathDoctor" });
+                } else {
+                    showToast(t("doctor.addPathInvalid"), "error");
+                }
+                break;
+
+            case "removePathFromEnvResult":
+                if (d.success) {
+                    showToast(t("doctor.removeSuccess"), "success");
+                    sendNative({ action: "inspectPathDoctor" });
+                } else {
+                    showToast(t("doctor.relaunchFailed"), "warning");
+                }
+                break;
+
             case "relaunchFailed":
                 showToast(t("doctor.relaunchFailed"), "warning");
                 break;
@@ -2738,15 +2765,342 @@
     }
 
     // -----------------------------------------------------------------------
-    // PATH Doctor Logic & UI
+    // PATH Doctor v0.8.13 Logic & State
     // -----------------------------------------------------------------------
-    function renderDoctorReport(rep) {
+    var currentAnimatedScore = 0;
+    var pathExplorerFilter = "all";
+    var pathExplorerSearchQuery = "";
+
+    function getAcknowledgedConflicts() {
+        try {
+            var raw = localStorage.getItem("lazyenv_acknowledged_conflicts");
+            return raw ? JSON.parse(raw) : [];
+        } catch (_) { return []; }
+    }
+
+    function saveAcknowledgedConflicts(list) {
+        try {
+            localStorage.setItem("lazyenv_acknowledged_conflicts", JSON.stringify(list));
+        } catch (_) {}
+    }
+
+    function getConflictKey(c) {
+        return (c.command || "").toLowerCase() + "|" + (c.activePath || "").toLowerCase() + "|" + (c.shadowedPath || "").toLowerCase();
+    }
+
+    function isConflictAcknowledged(c) {
+        var acks = getAcknowledgedConflicts();
+        return acks.indexOf(getConflictKey(c)) !== -1;
+    }
+
+    function acknowledgeConflictItem(c) {
+        var acks = getAcknowledgedConflicts();
+        var key = getConflictKey(c);
+        if (acks.indexOf(key) === -1) {
+            acks.push(key);
+            saveAcknowledgedConflicts(acks);
+        }
+    }
+
+    function detectSoftwareFromPath(rawPath) {
+        var p = (rawPath || "").toLowerCase();
+        if (p.includes("python") || p.includes("pip") || p.includes("conda")) {
+            return { name: "Python", icon: window.LazyEnvIcons.getIcon("python", "language"), category: "language" };
+        }
+        if (p.includes("oracle") || p.includes("java") || p.includes("jdk") || p.includes("jre")) {
+            return { name: "Java JDK", icon: window.LazyEnvIcons.getIcon("java", "language"), category: "language" };
+        }
+        if (p.includes("git") || p.includes("github")) {
+            return { name: "Git", icon: window.LazyEnvIcons.getIcon("git", "tool"), category: "tool" };
+        }
+        if (p.includes("nodejs") || p.includes("npm") || p.includes("pnpm") || p.includes("yarn")) {
+            return { name: "Node.js", icon: window.LazyEnvIcons.getIcon("node", "language"), category: "language" };
+        }
+        if (p.includes("cargo") || p.includes("rustup") || p.includes("rust")) {
+            return { name: "Rust", icon: window.LazyEnvIcons.getIcon("rustc", "language"), category: "language" };
+        }
+        if (p.includes("go\\bin") || p.includes("golang")) {
+            return { name: "Go", icon: window.LazyEnvIcons.getIcon("go", "language"), category: "language" };
+        }
+        if (p.includes("vscode") || p.includes("microsoft vs code") || p.includes("code.exe")) {
+            return { name: "VS Code", icon: window.LazyEnvIcons.getIcon("code", "editor"), category: "editor" };
+        }
+        if (p.includes("docker")) {
+            return { name: "Docker", icon: window.LazyEnvIcons.getIcon("docker", "runtime"), category: "runtime" };
+        }
+        if (p.includes("cmake")) {
+            return { name: "CMake", icon: window.LazyEnvIcons.getIcon("cmake", "tool"), category: "tool" };
+        }
+        if (p.includes("system32") || p.includes("syswow64") || p.includes("windows") || p.includes("powershell")) {
+            return { name: "Windows", icon: window.LazyEnvIcons.getIcon("pwsh", "tool"), category: "system" };
+        }
+        return { name: "App", icon: '<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M1 2.5A1.5 1.5 0 0 1 2.5 1h3A1.5 1.5 0 0 1 7 2.5v1h6.5A1.5 1.5 0 0 1 16 5v8.5a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 0 13.5v-11z"/></svg>', category: "other" };
+    }
+    function calculateDynamicScore(rep) {
+        var unackConflicts = (rep.conflicts || []).filter(function (c) {
+            return !isConflictAcknowledged(c);
+        });
+        var score = 100;
+        var deadDeduct = Math.min(40, (rep.deadEntries || 0) * 5);
+        var dupDeduct = Math.min(20, (rep.duplicateEntries || 0) * 2);
+        var conflictDeduct = Math.min(20, unackConflicts.length * 4);
+        var totLen = (rep.userPathLength || 0) + (rep.systemPathLength || 0);
+        var lenDeduct = 0;
+        if (totLen > 8192) lenDeduct = 10;
+        else if (totLen > 4096) lenDeduct = 10;
+        else if (totLen > 2048) lenDeduct = 5;
+
+        score = score - deadDeduct - dupDeduct - conflictDeduct - lenDeduct;
+        if (score < 10 && (rep.validEntries || 0) > 0) score = 15;
+        if (score < 0) score = 0;
+        if (score > 100) score = 100;
+
+        return {
+            score: score,
+            unackConflicts: unackConflicts,
+            unackConflictsCount: unackConflicts.length,
+            deadDeduct: deadDeduct,
+            dupDeduct: dupDeduct,
+            conflictDeduct: conflictDeduct,
+            lenDeduct: lenDeduct,
+            totLen: totLen
+        };
+    }
+
+    function animateScoreTo(target) {
         var badge = document.getElementById("doctorScoreBadge");
+        var gaugeFill = document.getElementById("doctorGaugeFill");
+        var gradeBadge = document.getElementById("doctorGradeBadge");
+        if (!badge) return;
+
+        var start = currentAnimatedScore;
+        var diff = target - start;
+        var duration = 500;
+        var startTime = null;
+
+        function step(ts) {
+            if (!startTime) startTime = ts;
+            var progress = Math.min(1, (ts - startTime) / duration);
+            var ease = 1 - Math.pow(1 - progress, 3);
+            var val = Math.round(start + diff * ease);
+            badge.textContent = val;
+
+            if (progress < 1) {
+                requestAnimationFrame(step);
+            } else {
+                badge.textContent = target;
+                currentAnimatedScore = target;
+            }
+        }
+        requestAnimationFrame(step);
+
+        var circumference = 264;
+        var offset = circumference - (circumference * target / 100);
+        if (gaugeFill) {
+            gaugeFill.style.strokeDashoffset = offset;
+            if (target >= 90) {
+                gaugeFill.style.stroke = "var(--status-success)";
+            } else if (target >= 75) {
+                gaugeFill.style.stroke = "var(--status-warning)";
+            } else {
+                gaugeFill.style.stroke = "var(--status-error)";
+            }
+        }
+
+        if (gradeBadge) {
+            gradeBadge.style.display = "inline-flex";
+            gradeBadge.className = "badge";
+            if (target >= 95) {
+                gradeBadge.classList.add("badge--grade-optimal");
+                gradeBadge.textContent = t("doctor.gradeOptimal") + " (" + target + ")";
+            } else if (target >= 80) {
+                gradeBadge.classList.add("badge--grade-good");
+                gradeBadge.textContent = t("doctor.gradeGood") + " (" + target + ")";
+            } else if (target >= 65) {
+                gradeBadge.classList.add("badge--grade-warning");
+                gradeBadge.textContent = t("doctor.gradeWarning") + " (" + target + ")";
+            } else {
+                gradeBadge.classList.add("badge--grade-danger");
+                gradeBadge.textContent = t("doctor.gradeDanger") + " (" + target + ")";
+            }
+        }
+    }
+
+    function groupConflictsByEcosystem(conflicts) {
+        var groups = {};
+        (conflicts || []).forEach(function (c) {
+            var cmd = (c.command || "").toLowerCase();
+            var ecoKey = "Other";
+            var ecoTitle = c.command;
+            var ecoDescKey = "doctor.conflictDescGeneric";
+
+            if (cmd.startsWith("python") || cmd.startsWith("pip") || cmd.startsWith("conda")) {
+                ecoKey = "Python";
+                ecoTitle = "Python";
+                ecoDescKey = "doctor.conflictDescPython";
+            } else if (cmd.startsWith("java") || cmd.startsWith("javac")) {
+                ecoKey = "Java";
+                ecoTitle = "Java JDK";
+                ecoDescKey = "doctor.conflictDescJava";
+            } else if (cmd.startsWith("node") || cmd.startsWith("npm") || cmd.startsWith("pnpm") || cmd.startsWith("yarn")) {
+                ecoKey = "Node.js";
+                ecoTitle = "Node.js";
+                ecoDescKey = "doctor.conflictDescGeneric";
+            } else if (cmd.startsWith("cargo") || cmd.startsWith("rustc") || cmd.startsWith("rustup")) {
+                ecoKey = "Rust";
+                ecoTitle = "Rust";
+                ecoDescKey = "doctor.conflictDescGeneric";
+            }
+
+            if (!groups[ecoKey]) {
+                groups[ecoKey] = {
+                    name: ecoTitle,
+                    descKey: ecoDescKey,
+                    icon: detectSoftwareFromPath(c.activePath).icon,
+                    conflicts: []
+                };
+            }
+            groups[ecoKey].conflicts.push(c);
+        });
+        return groups;
+    }
+    function renderPathExplorerRows() {
+        var container = document.getElementById("pathExplorerList");
+        if (!container || !pathDoctorReport) return;
+
+        var allItems = [];
+        var rank = 1;
+        (pathDoctorReport.systemEntries || []).forEach(function (e) {
+            allItems.push({ entry: e, isSys: true, rank: rank++ });
+        });
+        (pathDoctorReport.userEntries || []).forEach(function (e) {
+            allItems.push({ entry: e, isSys: false, rank: rank++ });
+        });
+
+        // Filter by scope
+        var filtered = allItems.filter(function (item) {
+            if (pathExplorerFilter === "user") return !item.isSys;
+            if (pathExplorerFilter === "system") return item.isSys;
+            if (pathExplorerFilter === "issues") return !item.entry.exists || item.entry.isDuplicate;
+            return true;
+        });
+
+        // Filter by search query
+        if (pathExplorerSearchQuery) {
+            var q = pathExplorerSearchQuery.toLowerCase();
+            filtered = filtered.filter(function (item) {
+                var raw = (item.entry.rawPath || "").toLowerCase();
+                var exp = (item.entry.expandedPath || "").toLowerCase();
+                var sw = detectSoftwareFromPath(raw).name.toLowerCase();
+                return raw.includes(q) || exp.includes(q) || sw.includes(q);
+            });
+        }
+
+        if (filtered.length === 0) {
+            container.innerHTML = '<div class="empty-state" style="padding:24px 0;">' + esc(t("env.noMatch")) + '</div>';
+            return;
+        }
+
+        var html = "";
+        filtered.forEach(function (item) {
+            var e = item.entry;
+            var sw = detectSoftwareFromPath(e.rawPath);
+            var parts = e.rawPath.replace(/[\\\/]+$/, "").split(/[\\\/]/);
+            var mainDir = parts[parts.length - 1] || e.rawPath;
+            var parentDir = parts.slice(0, parts.length - 1).join("\\");
+
+            var statusBadge = '<span class="badge badge--success">' + esc(t("doctor.statusValid")) + '</span>';
+            if (!e.exists) {
+                statusBadge = '<span class="badge badge--danger">' + esc(t("doctor.statusDead")) + '</span>';
+            } else if (e.isDuplicate) {
+                statusBadge = '<span class="badge badge--warning">' + esc(t("doctor.statusDup")) + '</span>';
+            }
+
+            var scopeBadge = item.isSys
+                ? '<span class="badge" style="background:rgba(96,205,255,0.12); color:var(--accent);">' + esc(t("doctor.tagSystem")) + '</span>'
+                : '<span class="badge" style="background:rgba(255,255,255,0.06); color:var(--text-secondary);">' + esc(t("doctor.tagUser")) + '</span>';
+
+            html += '<div class="path-row-item" data-path="' + esc(e.rawPath) + '" data-scope="' + (item.isSys ? "system" : "user") + '">' +
+                '<div class="path-row-rank">#' + (item.rank < 10 ? '0' : '') + item.rank + '</div>' +
+                '<div class="path-row-software-badge">' + sw.icon + '<span>' + esc(sw.name) + '</span></div>' +
+                '<div class="path-row-content">' +
+                '<div class="path-row-dir-main">' + esc(mainDir) + ' ' + scopeBadge + ' ' + statusBadge + '</div>' +
+                '<div class="path-row-dir-sub" title="' + esc(e.rawPath) + '">' + esc(parentDir ? parentDir + "\\" : e.rawPath) + '</div>' +
+                '</div>' +
+                '<div class="path-row-actions">' +
+                '<button class="btn btn--xs btn-row-top" title="' + esc(t("doctor.moveTop")) + '">' + esc(t("doctor.moveTop")) + '</button>' +
+                '<button class="btn btn--xs btn-row-up" title="' + esc(t("doctor.moveUp")) + '">&#9650;</button>' +
+                '<button class="btn btn--xs btn-row-down" title="' + esc(t("doctor.moveDown")) + '">&#9660;</button>' +
+                '<button class="btn btn--xs btn-row-reveal" title="' + esc(t("doctor.btnReveal")) + '">&#128194;</button>' +
+                '<button class="btn btn--xs btn-row-remove" title="' + esc(t("doctor.btnRemove")) + '" style="color:var(--status-error);">&#10005;</button>' +
+                '</div>' +
+                '</div>';
+        });
+
+        container.innerHTML = html;
+
+        // Bind Row Action Buttons
+        container.querySelectorAll(".btn-row-top").forEach(function (btn) {
+            btn.addEventListener("click", function () {
+                var row = btn.closest(".path-row-item");
+                var p = row.getAttribute("data-path");
+                var sc = row.getAttribute("data-scope");
+                sendNative({ action: "reorderPath", path: p, direction: "top", scope: sc });
+            });
+        });
+        container.querySelectorAll(".btn-row-up").forEach(function (btn) {
+            btn.addEventListener("click", function () {
+                var row = btn.closest(".path-row-item");
+                var p = row.getAttribute("data-path");
+                var sc = row.getAttribute("data-scope");
+                sendNative({ action: "reorderPath", path: p, direction: "up", scope: sc });
+            });
+        });
+        container.querySelectorAll(".btn-row-down").forEach(function (btn) {
+            btn.addEventListener("click", function () {
+                var row = btn.closest(".path-row-item");
+                var p = row.getAttribute("data-path");
+                var sc = row.getAttribute("data-scope");
+                sendNative({ action: "reorderPath", path: p, direction: "down", scope: sc });
+            });
+        });
+        container.querySelectorAll(".btn-row-reveal").forEach(function (btn) {
+            btn.addEventListener("click", function () {
+                var row = btn.closest(".path-row-item");
+                var p = row.getAttribute("data-path");
+                sendNative({ action: "openPathInExplorer", path: p });
+            });
+        });
+        container.querySelectorAll(".btn-row-remove").forEach(function (btn) {
+            btn.addEventListener("click", function () {
+                var row = btn.closest(".path-row-item");
+                var p = row.getAttribute("data-path");
+                var sc = row.getAttribute("data-scope");
+                showDialog(
+                    t("doctor.btnRemove"),
+                    t("doctor.removeConfirm", p),
+                    [
+                        { text: t("dialog.cancel") },
+                        {
+                            text: t("doctor.btnRemove"),
+                            cls: "btn--danger",
+                            action: function () {
+                                sendNative({ action: "removePathFromEnv", path: p, scope: sc });
+                            }
+                        }
+                    ]
+                );
+            });
+        });
+    }
+    function renderDoctorReport(rep) {
         var statusText = document.getElementById("doctorStatusText");
         var metricsGrid = document.getElementById("doctorMetricsGrid");
         var btnClean = document.getElementById("btnAutoCleanPath");
-        var drawer = document.getElementById("doctorDetailsDrawer");
-        var list = document.getElementById("doctorIssuesList");
+        var btnSmartFix = document.getElementById("btnSmartFix");
+        var btnExportReport = document.getElementById("btnExportDoctorReport");
+        var breakdownToggle = document.getElementById("btnToggleScoreBreakdown");
+        var breakdownList = document.getElementById("doctorScoreBreakdownList");
 
         if (metricsGrid) metricsGrid.style.display = "grid";
         var elValid = document.getElementById("docValidCount");
@@ -2758,21 +3112,61 @@
         var elConf = document.getElementById("docConflictCount");
         if (elConf) elConf.textContent = rep.conflicts ? rep.conflicts.length : 0;
 
-        if (badge) {
-            badge.textContent = rep.healthScore;
-            badge.className = "health-score-badge";
-            if (rep.healthScore >= 90) {
-                badge.classList.add("health-score-badge--perfect");
-                if (statusText) statusText.textContent = t("doctor.statusHealthy");
-            } else if (rep.healthScore >= 70) {
-                badge.classList.add("health-score-badge--warning");
-                if (statusText) statusText.textContent = t("doctor.statusWarning");
+        // Dynamic Score Calculation
+        var dynamic = calculateDynamicScore(rep);
+        animateScoreTo(dynamic.score);
+
+        // Update Status Subtitle
+        if (statusText) {
+            if (dynamic.score === 100) {
+                statusText.textContent = t("doctor.statusHealthy");
+            } else if (rep.deadEntries > 0 || rep.duplicateEntries > 0) {
+                statusText.textContent = t("doctor.statusWarning");
             } else {
-                badge.classList.add("health-score-badge--danger");
-                if (statusText) statusText.textContent = t("doctor.statusDanger");
+                statusText.textContent = t("doctor.statusDanger");
             }
         }
 
+        // Score Breakdown Drawer Content
+        if (breakdownList) {
+            if (dynamic.score === 100) {
+                breakdownList.innerHTML = '<div class="text-success">&#10004; ' + esc(t("doctor.deductionClean")) + '</div>';
+            } else {
+                var bHtml = "";
+                if (dynamic.conflictDeduct > 0) {
+                    bHtml += '<div class="text-accent">&#9888; ' + esc(t("doctor.deductionConflicts", dynamic.unackConflictsCount, dynamic.conflictDeduct)) + '</div>';
+                }
+                if (dynamic.deadDeduct > 0) {
+                    bHtml += '<div class="text-danger">&#9888; ' + esc(t("doctor.deductionDead", rep.deadEntries, dynamic.deadDeduct)) + '</div>';
+                }
+                if (dynamic.dupDeduct > 0) {
+                    bHtml += '<div class="text-warning">&#9888; ' + esc(t("doctor.deductionDup", rep.duplicateEntries, dynamic.dupDeduct)) + '</div>';
+                }
+                if (dynamic.lenDeduct > 0) {
+                    bHtml += '<div class="text-warning">&#9888; ' + esc(t("doctor.deductionLength", dynamic.lenDeduct)) + '</div>';
+                }
+                breakdownList.innerHTML = bHtml;
+            }
+        }
+        if (breakdownToggle) {
+            breakdownToggle.style.display = "inline-block";
+        }
+
+        // Smart Fix Button (Visible when issues exist)
+        if (btnSmartFix) {
+            if (dynamic.score < 100 || rep.deadEntries > 0 || rep.duplicateEntries > 0 || dynamic.unackConflictsCount > 0) {
+                btnSmartFix.style.display = "inline-flex";
+            } else {
+                btnSmartFix.style.display = "none";
+            }
+        }
+
+        // Export Report Button
+        if (btnExportReport) {
+            btnExportReport.style.display = "inline-flex";
+        }
+
+        // Clean Button
         if (btnClean) {
             if (rep.deadEntries > 0 || rep.duplicateEntries > 0) {
                 btnClean.style.display = "inline-flex";
@@ -2781,11 +3175,172 @@
             }
         }
 
-        var btnExportReport = document.getElementById("btnExportDoctorReport");
-        if (btnExportReport) {
-            btnExportReport.style.display = "inline-flex";
+        // -------------------------------------------------------------
+        // Render Section 2: Ecosystem Conflict Cards
+        // -------------------------------------------------------------
+        var conflictBox = document.getElementById("doctorConflictCardBox");
+        var conflictList = document.getElementById("doctorConflictList");
+        var conflictBadge = document.getElementById("doctorConflictStatsBadge");
+
+        if (conflictBox && conflictList) {
+            if (!rep.conflicts || rep.conflicts.length === 0) {
+                conflictBox.style.display = "none";
+                conflictList.innerHTML = "";
+            } else {
+                conflictBox.style.display = "block";
+                var ecoGroups = groupConflictsByEcosystem(rep.conflicts);
+                var cHtml = "";
+
+                if (conflictBadge) {
+                    conflictBadge.innerHTML = '<span class="badge badge--update">' + esc(t("doctor.conflictLabel")) + ': ' + rep.conflicts.length + '</span>';
+                }
+
+                Object.keys(ecoGroups).forEach(function (key) {
+                    var group = ecoGroups[key];
+                    var groupConflicts = group.conflicts;
+                    var firstC = groupConflicts[0];
+
+                    var allAcked = groupConflicts.every(function (c) { return isConflictAcknowledged(c); });
+                    var isAnyHijack = groupConflicts.some(function (c) { return c.isAliasHijack; });
+
+                    var headerBadge = allAcked
+                        ? '<span class="badge badge--success">' + esc(t("doctor.acknowledgedBadge")) + '</span>'
+                        : '<span class="badge" style="background:rgba(245,158,11,0.15); color:#f59e0b; border:1px solid rgba(245,158,11,0.3);">' + esc(t("doctor.conflictEcoTitle", group.name, groupConflicts.length)) + '</span>';
+
+                    if (isAnyHijack) {
+                        headerBadge += ' <span class="badge--hijack">' + esc(t("doctor.aliasHijackBadge")) + '</span>';
+                    }
+
+                    cHtml += '<div class="eco-conflict-card">' +
+                        '<div class="eco-header">' +
+                        '<div class="eco-header__left">' +
+                        '<div class="eco-header__icon">' + group.icon + '</div>' +
+                        '<div class="eco-header__title">' + esc(group.name) + '</div>' +
+                        headerBadge +
+                        '</div>' +
+                        '</div>' +
+                        '<div class="eco-duel-container">' +
+                        '<div class="eco-side eco-side--active">' +
+                        '<div class="eco-side__badge-row">' +
+                        '<span style="font-weight:700; color:var(--status-success);">&#10004; ' + esc(t("doctor.conflictActiveTip")) + '</span>' +
+                        '<span class="badge" style="font-size:10px;">' + (firstC.activeSource === "system" ? t("doctor.tagSystem") : t("doctor.tagUser")) + '</span>' +
+                        '</div>' +
+                        '<div class="eco-side__path">' + esc(firstC.activePath) + '</div>' +
+                        '<div style="margin-top:6px;"><button class="btn btn--xs btn-reveal-path" data-path="' + esc(firstC.activePath) + '">' + esc(t("doctor.btnRevealActive")) + '</button></div>' +
+                        '</div>' +
+                        '<div class="eco-side eco-side--shadowed">' +
+                        '<div class="eco-side__badge-row">' +
+                        '<span style="font-weight:700; color:#f59e0b;">&#9888; ' + esc(t("doctor.conflictShadowedTip")) + '</span>' +
+                        '<span class="badge" style="font-size:10px;">' + (firstC.shadowedSource === "system" ? t("doctor.tagSystem") : t("doctor.tagUser")) + '</span>' +
+                        '</div>' +
+                        '<div class="eco-side__path">' + esc(firstC.shadowedPath) + '</div>' +
+                        '<div style="margin-top:6px;"><button class="btn btn--xs btn-reveal-path" data-path="' + esc(firstC.shadowedPath) + '">' + esc(t("doctor.btnRevealShadowed")) + '</button></div>' +
+                        '</div>' +
+                        '</div>' +
+                        '<div class="eco-tip-box">&#128161; ' + esc(t(group.descKey, group.name)) + '</div>' +
+                        '<div class="eco-actions">';
+
+                    if (!allAcked) {
+                        cHtml += '<button class="btn btn--sm btn--accent btn-ack-eco" data-eco="' + esc(key) + '">' + esc(t("doctor.btnAcknowledge")) + '</button>';
+                    }
+
+                    if (firstC.shadowedSource === "user") {
+                        cHtml += '<button class="btn btn--sm btn-clean-shadowed" data-path="' + esc(firstC.shadowedPath) + '">' + esc(t("doctor.btnCleanShadowed")) + '</button>';
+                    }
+
+                    if (isAnyHijack) {
+                        cHtml += '<button class="btn btn--sm btn-fix-alias btn-switch-active" data-tool="' + esc(firstC.command) + '" data-path="' + esc(firstC.shadowedPath) + '">' + esc(t("doctor.btnFixAlias")) + '</button>';
+                    }
+
+                    cHtml += '</div></div>';
+                });
+
+                conflictList.innerHTML = cHtml;
+
+                // Action Listeners on Conflict Cards
+                conflictList.querySelectorAll(".btn-reveal-path").forEach(function (btn) {
+                    btn.addEventListener("click", function () {
+                        var p = btn.getAttribute("data-path");
+                        if (p) sendNative({ action: "openPathInExplorer", path: p });
+                    });
+                });
+
+                conflictList.querySelectorAll(".btn-ack-eco").forEach(function (btn) {
+                    btn.addEventListener("click", function () {
+                        var eco = btn.getAttribute("data-eco");
+                        var group = ecoGroups[eco];
+                        if (group && group.conflicts) {
+                            group.conflicts.forEach(function (c) {
+                                acknowledgeConflictItem(c);
+                            });
+                            showToast(t("doctor.acknowledgedToast"), "success");
+                            renderDoctorReport(pathDoctorReport);
+                        }
+                    });
+                });
+
+                conflictList.querySelectorAll(".btn-clean-shadowed").forEach(function (btn) {
+                    btn.addEventListener("click", function () {
+                        var p = btn.getAttribute("data-path");
+                        if (!p) return;
+                        showDialog(
+                            t("doctor.btnCleanShadowed"),
+                            t("doctor.cleanShadowedConfirm", p),
+                            [
+                                { text: t("dialog.cancel") },
+                                {
+                                    text: t("doctor.btnCleanShadowed"),
+                                    cls: "btn--danger",
+                                    action: function () {
+                                        sendNative({ action: "removeFromPath", path: p });
+                                    }
+                                }
+                            ]
+                        );
+                    });
+                });
+
+                conflictList.querySelectorAll(".btn-fix-alias").forEach(function (btn) {
+                    btn.addEventListener("click", function () {
+                        var p = btn.getAttribute("data-path");
+                        var tool = btn.getAttribute("data-tool") || "";
+                        if (p) sendNative({ action: "switchVersion", tool: tool, path: p });
+                    });
+                });
+            }
         }
 
+        // -------------------------------------------------------------
+        // Render Section 3: Full PATH Explorer
+        // -------------------------------------------------------------
+        var explorerBox = document.getElementById("doctorExplorerCardBox");
+        if (explorerBox) {
+            explorerBox.style.display = "block";
+            var titleEl = document.getElementById("explorerTitleText");
+            if (titleEl) {
+                titleEl.textContent = t("doctor.explorerTitle") + " (" + rep.totalEntries + ")";
+            }
+
+            // Update filter chip count badges
+            var uCount = (rep.userEntries || []).length;
+            var sCount = (rep.systemEntries || []).length;
+            var issueCount = (rep.deadEntries || 0) + (rep.duplicateEntries || 0);
+
+            var chips = document.querySelectorAll("#pathScopeFilterChips .filter-chip");
+            chips.forEach(function (c) {
+                var sc = c.getAttribute("data-scope");
+                if (sc === "all") c.textContent = t("doctor.scopeAll", rep.totalEntries);
+                if (sc === "user") c.textContent = t("doctor.scopeUser", uCount);
+                if (sc === "system") c.textContent = t("doctor.scopeSys", sCount);
+                if (sc === "issues") c.textContent = t("doctor.scopeIssues", issueCount);
+            });
+
+            renderPathExplorerRows();
+        }
+
+        // -------------------------------------------------------------
+        // Render Section 4: PATH Length & Buffer Monitor
+        // -------------------------------------------------------------
         var lenBox = document.getElementById("doctorPathLengthBox");
         if (lenBox && rep.userPathLength !== undefined) {
             lenBox.style.display = "block";
@@ -2796,156 +3351,149 @@
             var sEl = document.getElementById("docSysPathLen");
             var totEl = document.getElementById("docTotalPathLen");
             var stEl = document.getElementById("docPathLengthStatus");
+            var badgeEl = document.getElementById("docPathLengthBadge");
+            var barFill = document.getElementById("docBufferBarFill");
+
             if (uEl) uEl.textContent = t("doctor.pathLengthUser", uLen);
             if (sEl) sEl.textContent = t("doctor.pathLengthSys", sLen);
             if (totEl) totEl.textContent = t("doctor.pathLengthTotal", totLen);
+
+            var pct = Math.min(100, Math.round((totLen / 2048) * 100));
+            if (barFill) {
+                barFill.style.width = pct + "%";
+                if (totLen > 8192) {
+                    barFill.style.backgroundColor = "var(--status-error)";
+                } else if (totLen > 2048) {
+                    barFill.style.backgroundColor = "var(--status-warning)";
+                } else {
+                    barFill.style.backgroundColor = "var(--status-success)";
+                }
+            }
+
             if (stEl) {
                 if (totLen > 8192) {
                     stEl.textContent = t("doctor.pathLengthDanger");
                     stEl.style.color = "var(--status-error)";
+                    if (badgeEl) { badgeEl.className = "badge badge--danger"; badgeEl.textContent = "Critical"; }
                 } else if (totLen > 2048) {
                     stEl.textContent = t("doctor.pathLengthWarn");
                     stEl.style.color = "var(--status-warning)";
+                    if (badgeEl) { badgeEl.className = "badge badge--warning"; badgeEl.textContent = "Warning"; }
                 } else {
                     stEl.textContent = t("doctor.pathLengthSafe");
                     stEl.style.color = "var(--status-success)";
+                    if (badgeEl) { badgeEl.className = "badge badge--success"; badgeEl.textContent = "Safe"; }
                 }
             }
         }
+    }
 
-        var hasIssues = (rep.deadEntries > 0 || rep.duplicateEntries > 0 || (rep.conflicts && rep.conflicts.length > 0));
-        if (drawer && list) {
-            if (!hasIssues) {
-                drawer.style.display = "none";
-                list.innerHTML = "";
-                return;
+    // -----------------------------------------------------------------------
+    // PATH Doctor Controls & Button Listeners
+    // -----------------------------------------------------------------------
+    var btnToggleBreakdown = document.getElementById("btnToggleScoreBreakdown");
+    if (btnToggleBreakdown) {
+        btnToggleBreakdown.addEventListener("click", function () {
+            var drawer = document.getElementById("doctorScoreBreakdownDrawer");
+            if (drawer) {
+                drawer.style.display = (drawer.style.display === "none" || !drawer.style.display) ? "block" : "none";
             }
+        });
+    }
 
-            drawer.style.display = "block";
-            var html = "";
+    var btnSmartFix = document.getElementById("btnSmartFix");
+    if (btnSmartFix) {
+        btnSmartFix.addEventListener("click", function () {
+            if (!pathDoctorReport) return;
+            showDialog(
+                t("doctor.btnSmartFix"),
+                t("doctor.smartFixConfirm"),
+                [
+                    { text: t("dialog.cancel") },
+                    {
+                        text: t("doctor.btnSmartFix"),
+                        cls: "btn--accent",
+                        action: function () {
+                            (pathDoctorReport.conflicts || []).forEach(function (c) {
+                                acknowledgeConflictItem(c);
+                            });
 
-            // 1. Conflicts
-            if (rep.conflicts && rep.conflicts.length > 0) {
-                html += '<div class="mb-sm" style="font-weight:600; font-size:13px; color:var(--accent);">' +
-                        esc(t("doctor.conflictsTitle")) + ' (' + rep.conflicts.length + ')</div>';
-                rep.conflicts.forEach(function (c) {
-                    html += '<div class="conflict-card" style="display:flex; justify-content:space-between; align-items:center; gap:12px;">' +
-                        '<div style="flex:1;">' +
-                        '<div class="conflict-card__title" style="display:flex;align-items:center;flex-wrap:wrap;gap:6px;">' +
-                        '<span>Collision: ' + esc(c.command) + '</span>' +
-                        (c.isAliasHijack ? ' <span class="badge--hijack">' + esc(t("doctor.aliasHijackBadge")) + '</span>' : '') +
-                        '</div>' +
-                        (c.isAliasHijack ? '<div class="text-warning mb-xs" style="font-size:11px;margin-top:2px;">⚠️ ' + esc(t("doctor.aliasHijackWarning")) + '</div>' : '') +
-                        '<div class="conflict-paths">' +
-                        '<div class="conflict-path-row text-success"><span style="font-weight:600">' + esc(t("doctor.active")) + '</span> (' + esc(c.activeSource) + ') ' + esc(c.activePath) + '</div>' +
-                        '<div class="conflict-path-row text-secondary"><span style="font-weight:600">' + esc(t("doctor.shadowed")) + '</span> (' + esc(c.shadowedSource) + ') ' + esc(c.shadowedPath) + '</div>' +
-                        '</div>' +
-                        '<div style="display:flex; flex-direction:column; gap:4px; flex-shrink:0;">' +
-                        '<button class="btn btn--xs btn-reveal-path" data-path="' + esc(c.shadowedPath) + '">' + esc(t("doctor.btnReveal")) + '</button>' +
-                        (c.isAliasHijack ?
-                            '<button class="btn btn--xs btn-fix-alias btn-switch-active" data-tool="' + esc(c.command) + '" data-path="' + esc(c.shadowedPath) + '">' + esc(t("doctor.btnFixAlias")) + '</button>' :
-                            '<button class="btn btn--xs btn--accent btn-switch-active" data-tool="' + esc(c.command) + '" data-path="' + esc(c.shadowedPath) + '">' + esc(t("doctor.btnSetActive")) + '</button>') +
-                        '<button class="btn btn--xs btn-remove-path" data-path="' + esc(c.shadowedPath) + '">' + esc(t("doctor.btnRemove")) + '</button>' +
-                        '</div>' +
-                        '</div>';
-                });
-            }
-
-            // 2. Dead paths
-            var deads = [];
-            (rep.userEntries || []).concat(rep.systemEntries || []).forEach(function (e) {
-                if (!e.exists) deads.push(e);
-            });
-            if (deads.length > 0) {
-                html += '<div class="mt-md mb-sm" style="font-weight:600; font-size:13px; color:var(--status-error);">' +
-                        esc(t("doctor.deadTitle")) + ' (' + deads.length + ')</div>';
-                deads.forEach(function (d) {
-                    html += '<div class="doc-dead-item">' + (d.isSystem ? '[System] ' : '[User] ') + esc(d.rawPath) + '</div>';
-                });
-            }
-
-            // 3. Duplicate paths
-            var dups = [];
-            (rep.userEntries || []).concat(rep.systemEntries || []).forEach(function (e) {
-                if (e.isDuplicate) dups.push(e);
-            });
-            if (dups.length > 0) {
-                html += '<div class="mt-md mb-sm" style="font-weight:600; font-size:13px; color:var(--status-warning);">' +
-                        esc(t("doctor.dupTitle")) + ' (' + dups.length + ')</div>';
-                dups.forEach(function (d) {
-                    html += '<div class="doc-dup-item">' + (d.isSystem ? '[System] ' : '[User] ') + esc(d.rawPath) + '</div>';
-                });
-            }
-
-            // Check if any system entry has dead paths or duplicates requiring elevation
-            var needsAdmin = (rep.systemEntries || []).some(function (e) { return !e.exists || e.isDuplicate; });
-            if (needsAdmin) {
-                html += '<div class="elevation-notice-box" style="margin-top:14px; display:flex; align-items:center; justify-content:space-between; background:rgba(252,225,0,0.08); border:1px solid rgba(252,225,0,0.3); padding:10px 14px; border-radius:var(--radius-sm);">' +
-                    '<span style="font-size:12px; color:var(--text-primary);">&#9888; ' + esc(t("doctor.elevationBanner")) + '</span>' +
-                    '<button class="btn btn--sm btn--accent" id="btnRelaunchAdmin">' + esc(t("doctor.btnRelaunchAdmin")) + '</button>' +
-                    '</div>';
-            }
-
-            list.innerHTML = html;
-
-            var btnAdmin = document.getElementById("btnRelaunchAdmin");
-            if (btnAdmin) {
-                btnAdmin.addEventListener("click", function () {
-                    sendNative({ action: "relaunchAsAdmin" });
-                });
-            }
-
-            // Conflict card action listeners
-            list.querySelectorAll(".btn-reveal-path").forEach(function (btn) {
-                btn.addEventListener("click", function () {
-                    var p = btn.getAttribute("data-path");
-                    if (p) sendNative({ action: "openPathInExplorer", path: p });
-                });
-            });
-
-            list.querySelectorAll(".btn-prioritize-path, .btn-switch-active").forEach(function (btn) {
-                btn.addEventListener("click", function () {
-                    var p = btn.getAttribute("data-path");
-                    var tool = btn.getAttribute("data-tool") || "";
-                    if (!p) return;
-                    showDialog(
-                        t("home.confirmSwitchTitle"),
-                        t("home.confirmSwitchDesc", tool || p, p),
-                        [
-                            { text: t("dialog.cancel") },
-                            {
-                                text: t("doctor.btnSetActive"),
-                                cls: "btn--accent",
-                                handler: function () {
-                                    sendNative({ action: "switchVersion", tool: tool, path: p });
-                                }
+                            if (pathDoctorReport.deadEntries > 0 || pathDoctorReport.duplicateEntries > 0) {
+                                sendNative({
+                                    action: "pathDoctorAutoClean",
+                                    cleanUser: true,
+                                    cleanSystem: true
+                                });
+                            } else {
+                                renderDoctorReport(pathDoctorReport);
+                                showToast(t("doctor.smartFixSuccess"), "success");
                             }
-                        ]
-                    );
-                });
-            });
+                        }
+                    }
+                ]
+            );
+        });
+    }
 
-            list.querySelectorAll(".btn-remove-path").forEach(function (btn) {
-                btn.addEventListener("click", function () {
-                    var p = btn.getAttribute("data-path");
-                    if (!p) return;
-                    showDialog(
-                        t("doctor.btnRemove"),
-                        t("doctor.removeConfirm", p),
-                        [
-                            { text: t("dialog.cancel") },
-                            {
-                                text: t("doctor.btnRemove"),
-                                cls: "btn--danger",
-                                action: function () {
-                                    sendNative({ action: "removeFromPath", path: p });
-                                }
-                            }
-                        ]
-                    );
-                });
+    var btnAddPathExpl = document.getElementById("btnAddPathExplorer");
+    if (btnAddPathExpl) {
+        btnAddPathExpl.addEventListener("click", function () {
+            var p = prompt(t("doctor.addPathPrompt"));
+            if (p && p.trim()) {
+                sendNative({ action: "addPathToEnv", path: p.trim(), scope: "user" });
+            }
+        });
+    }
+
+    var searchExpl = document.getElementById("pathExplorerSearch");
+    if (searchExpl) {
+        searchExpl.addEventListener("input", function (e) {
+            pathExplorerSearchQuery = e.target.value.trim();
+            renderPathExplorerRows();
+        });
+    }
+
+    var filterChips = document.querySelectorAll("#pathScopeFilterChips .filter-chip");
+    filterChips.forEach(function (chip) {
+        chip.addEventListener("click", function () {
+            filterChips.forEach(function (c) { c.classList.remove("filter-chip--active"); });
+            chip.classList.add("filter-chip--active");
+            pathExplorerFilter = chip.getAttribute("data-scope") || "all";
+            renderPathExplorerRows();
+        });
+    });
+
+    // Metric Cards Click Quick Filters
+    var cardMDead = document.getElementById("cardMetricDead");
+    if (cardMDead) {
+        cardMDead.addEventListener("click", function () {
+            filterChips.forEach(function (c) {
+                c.classList.toggle("filter-chip--active", c.getAttribute("data-scope") === "issues");
             });
-        }
+            pathExplorerFilter = "issues";
+            renderPathExplorerRows();
+            var ex = document.getElementById("doctorExplorerCardBox");
+            if (ex) ex.scrollIntoView({ behavior: "smooth" });
+        });
+    }
+    var cardMDup = document.getElementById("cardMetricDup");
+    if (cardMDup) {
+        cardMDup.addEventListener("click", function () {
+            filterChips.forEach(function (c) {
+                c.classList.toggle("filter-chip--active", c.getAttribute("data-scope") === "issues");
+            });
+            pathExplorerFilter = "issues";
+            renderPathExplorerRows();
+            var ex = document.getElementById("doctorExplorerCardBox");
+            if (ex) ex.scrollIntoView({ behavior: "smooth" });
+        });
+    }
+    var cardMConf = document.getElementById("cardMetricConflict");
+    if (cardMConf) {
+        cardMConf.addEventListener("click", function () {
+            var confBox = document.getElementById("doctorConflictCardBox");
+            if (confBox) confBox.scrollIntoView({ behavior: "smooth" });
+        });
     }
 
     var btnExportDoc = document.getElementById("btnExportDoctorReport");
