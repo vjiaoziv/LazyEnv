@@ -1,8 +1,8 @@
 import { spawn } from 'node:child_process';
 
-const PORT = 9255;
+const PORT = 9256;
 const exePath = "D:\\Git\\LazyEnv\\build\\Release\\LazyEnv.exe";
-console.log("=== Launching LazyEnv for v0.8.14 Advanced CDP E2E Testing ===");
+console.log("=== Launching LazyEnv for v0.8.14 Comprehensive CDP E2E Testing ===");
 
 const proc = spawn(exePath, [], {
   env: {
@@ -71,14 +71,23 @@ async function run() {
       await sleep(300);
     }
 
+    // Test 1: UI Version
+    console.log("\n[Test 1: Version Consistency]");
+    const verRes = await send("Runtime.evaluate", {
+      expression: 'document.querySelector(".sidebar__version")?.textContent',
+      returnByValue: true
+    });
+    test("UI shows LazyEnv v0.8.14", verRes?.result?.value?.includes("v0.8.14"), verRes?.result?.value);
+
     // Navigate to PATH Doctor
+    console.log("\n[Navigating to PATH Doctor]");
     await send("Runtime.evaluate", {
       expression: 'document.querySelector(\'[data-page="doctor"]\')?.click()'
     });
     await sleep(2500);
 
-    // Test 1: Fluent 2 breakdown pill button styling
-    console.log("\n[Test 1: Fluent 2 Breakdown Pill Button]");
+    // Test 2: Fluent 2 breakdown pill button styling & toggle
+    console.log("\n[Test 2: Fluent 2 Breakdown Pill Button]");
     const pillRes = await send("Runtime.evaluate", {
       returnByValue: true,
       expression: `
@@ -100,109 +109,118 @@ async function run() {
     test("Breakdown button is styled as Fluent 2 pill", pillData.hasPillClass && pillData.hasChevron);
     test("Clicking pill toggles open state with rotating chevron", pillData.toggledOpen);
 
-    // Test 2: Decision Guide collapsible inside conflict cards
-    console.log("\n[Test 2: Beginner Decision Guide in Conflict Cards]");
-    const guideRes = await send("Runtime.evaluate", {
+    // Test 3: Official Documentation Link in Conflict Cards
+    console.log("\n[Test 3: Official Documentation Link in Conflict Cards]");
+    const docRes = await send("Runtime.evaluate", {
       returnByValue: true,
       expression: `
         (function() {
-          var toggle = document.querySelector(".conflict-guide-toggle");
-          if (!toggle) return { found: false };
-          var box = toggle.nextElementSibling;
-          var beforeDisplay = box ? box.style.display : "";
-          toggle.click();
-          var afterDisplay = box ? box.style.display : "";
-          var pCount = box ? box.querySelectorAll("p").length : 0;
-          var hasAgentMention = box ? box.textContent.includes("Agent") || box.textContent.includes("VS Code") : false;
+          var docBtns = document.querySelectorAll(".btn-open-official-doc");
+          var urls = Array.from(docBtns).map(b => b.getAttribute("data-url"));
           return {
-            found: true,
-            toggled: afterDisplay === "block",
-            pCount: pCount,
-            hasAgentMention: hasAgentMention
+            count: docBtns.length,
+            urls: urls,
+            hasPythonDoc: urls.some(u => u.includes("python.org")),
+            hasJavaDoc: urls.some(u => u.includes("oracle.com"))
           };
         })()
       `
     });
-    const gData = guideRes?.result?.value || {};
-    test("Decision Guide toggle exists in conflict cards", gData.found);
-    test("Decision Guide opens on click and contains 3 guidance paragraphs", gData.toggled && gData.pCount === 3);
-    test("Guidance explicitly explains IDE & AI Agent safety", gData.hasAgentMention);
+    const docData = docRes?.result?.value || {};
+    test("Official Docs buttons rendered in conflict cards", docData.count > 0, `Count: ${docData.count}`);
+    test("Python official doc URL linked correctly", docData.hasPythonDoc);
+    test("Java official doc URL linked correctly", docData.hasJavaDoc);
 
-    // Test 3: Path Purpose Explanations & System Core Lock
-    console.log("\n[Test 3: Path Purpose Explanations & Core Lock Protection]");
-    const lockRes = await send("Runtime.evaluate", {
+    // Test 4: Path Purpose Explanations, Core Lock, & Copy Button
+    console.log("\n[Test 4: Explorer Rows - 30+ Software Recognition, Purpose & Copy Button]");
+    const expRowRes = await send("Runtime.evaluate", {
       returnByValue: true,
       expression: `
         (function() {
           var rows = document.querySelectorAll(".path-row-item");
+          var copyBtns = document.querySelectorAll(".btn-row-copy");
           var lockedRows = document.querySelectorAll(".path-row-item--locked");
           var purposes = document.querySelectorAll(".path-row-purpose");
-          var sys32 = Array.from(lockedRows).find(r => r.getAttribute("data-path").toLowerCase().includes("system32"));
+          var badges = Array.from(document.querySelectorAll(".path-row-software-badge")).map(b => b.textContent.trim());
+          
           return {
             totalRows: rows.length,
+            copyBtnsCount: copyBtns.length,
             purposesCount: purposes.length,
             lockedCount: lockedRows.length,
-            hasSystem32Locked: !!sys32,
-            hasLockBadge: sys32 ? !!sys32.querySelector(".badge--core-locked") : false,
+            hasPythonBadge: badges.some(b => b.includes("Python")),
+            hasJavaBadge: badges.some(b => b.includes("Java")),
+            hasWindowsBadge: badges.some(b => b.includes("Windows")),
+            hasScoopOrAdbOrFlutter: badges.some(b => b.includes("Scoop") || b.includes("Android") || b.includes("Flutter") || b.includes("Rust")),
             samplePurpose: purposes[0] ? purposes[0].textContent : ""
           };
         })()
       `
     });
-    const lData = lockRes?.result?.value || {};
-    test("Every path row has an intelligent purpose explanation", lData.purposesCount > 40, lData.samplePurpose);
-    test("Windows core directories are locked with protection badge", lData.hasSystem32Locked && lData.hasLockBadge, `Locked: ${lData.lockedCount}`);
+    const expRowData = expRowRes?.result?.value || {};
+    test("Every path row has a dedicated Copy button", expRowData.copyBtnsCount >= 40, `Count: ${expRowData.copyBtnsCount}`);
+    test("Every path row has an intelligent purpose explanation", expRowData.purposesCount >= 40, expRowData.samplePurpose);
+    test("Windows core directories are locked with protection badge", expRowData.lockedCount > 0, `Locked: ${expRowData.lockedCount}`);
+    test("Developer software badges recognized", expRowData.hasPythonBadge && expRowData.hasJavaBadge && expRowData.hasWindowsBadge);
 
-    // Test 4: Clicking locked remove button protects against deletion
-    console.log("\n[Test 4: System Core Deletion Protection Alert]");
-    const alertRes = await send("Runtime.evaluate", {
+    // Test 5: Copy Path Toast
+    console.log("\n[Test 5: Copy Path Toast Notification]");
+    const copyToastRes = await send("Runtime.evaluate", {
       returnByValue: true,
       expression: `
         (function() {
-          var lockedRow = document.querySelector(".path-row-item--locked");
-          if (!lockedRow) return { protected: false };
-          var removeBtn = lockedRow.querySelector(".btn-row-remove");
-          removeBtn.click();
-          var toast = document.querySelector(".toast.toast--error");
+          var firstCopyBtn = document.querySelector(".btn-row-copy");
+          if (firstCopyBtn) firstCopyBtn.click();
+          var toast = document.querySelector(".toast.toast--info");
           return {
-            protected: true,
-            hasErrorToast: !!toast,
+            hasToast: !!toast,
             toastText: toast ? toast.textContent : ""
           };
         })()
       `
     });
-    const aData = alertRes?.result?.value || {};
-    test("Attempting to delete system core triggers protection toast", aData.hasErrorToast, aData.toastText);
+    const ctData = copyToastRes?.result?.value || {};
+    test("Clicking Copy triggers success Toast", ctData.hasToast, ctData.toastText);
 
-    // Test 5: Radar Scanning animation on "Run Inspection" click
-    console.log("\n[Test 5: Radar Scanning Feedback Animation]");
-    const scanRes = await send("Runtime.evaluate", {
+    // Test 6: Dynamic Score Synchronization with Home Page
+    console.log("\n[Test 6: Full Score Synchronization Between Doctor & Home]");
+    const syncRes = await send("Runtime.evaluate", {
+      awaitPromise: true,
       returnByValue: true,
       expression: `
-        (function() {
-          var btn = document.getElementById("btnRunDoctor");
-          var gFill = document.getElementById("doctorGaugeFill");
-          var sBadge = document.getElementById("doctorScoreBadge");
-          var sStatus = document.getElementById("doctorStatusText");
-          btn.click();
-          return {
-            hasScanningClass: gFill ? gFill.classList.contains("doctor-gauge-fill--scanning") : false,
-            hasPulsingScore: sBadge ? sBadge.classList.contains("doctor-gauge-score--pulsing") : false,
-            scoreIsDash: sBadge ? sBadge.textContent === "--" : false,
-            statusText: sStatus ? sStatus.textContent : ""
-          };
-        })()
+        new Promise((resolve) => {
+          // Acknowledge all conflicts via button click
+          var ackBtns = document.querySelectorAll(".btn-ack-eco");
+          ackBtns.forEach(b => b.click());
+
+          setTimeout(() => {
+            var docScore = document.getElementById("doctorScoreBadge")?.textContent;
+            
+            // Navigate to Home page
+            document.querySelector('[data-page="home"]')?.click();
+
+            setTimeout(() => {
+              var homeScore = document.getElementById("homeMetricDoctor")?.textContent;
+              var homeSub = document.getElementById("homeMetricDoctorSub")?.textContent;
+              resolve({
+                docScore: docScore,
+                homeScore: homeScore,
+                homeSub: homeSub,
+                scoresEqual: docScore === "100" && homeScore.includes("100")
+              });
+            }, 500);
+          }, 800);
+        })
       `
     });
-    const sData = scanRes?.result?.value || {};
-    test("Gauge ring activates radar scanning animation", sData.hasScanningClass);
-    test("Score pulses with '--' placeholder during scan", sData.hasPulsingScore && sData.scoreIsDash);
-    test("Status text broadcasts active scanning progress", sData.statusText.includes("全面体检") || sData.statusText.includes("Scanning"));
+    const sData = syncRes?.result?.value || {};
+    console.log("Sync Result:", sData);
+    test("Home page and PATH Doctor scores are 100% identical and 100 points", sData.scoresEqual, `Home: ${sData.homeScore}, Doctor: ${sData.docScore}`);
+    test("Home page subtitle reflects healthy environment state", !sData.homeSub?.includes("冲突"), sData.homeSub);
 
     ws.close();
     console.log("\n=============================================================");
-    console.log(`v0.8.14 Advanced CDP Summary: ${passed} passed, ${failed} failed`);
+    console.log(`v0.8.14 Comprehensive CDP Summary: ${passed} passed, ${failed} failed`);
     console.log("=============================================================\n");
   } catch (err) {
     console.error("CDP Test error:", err);

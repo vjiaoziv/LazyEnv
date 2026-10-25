@@ -2734,10 +2734,19 @@
                 }
                 var subText = document.getElementById("homeMetricDoctorSub");
                 if (subText) {
-                    var cCount = pathDoctorReport ? (pathDoctorReport.conflicts ? pathDoctorReport.conflicts.length : 0) : (savedDoctorCache ? savedDoctorCache.conflicts || 0 : 0);
+                    var unackCount = 0;
+                    if (pathDoctorReport && pathDoctorReport.conflicts) {
+                        unackCount = pathDoctorReport.conflicts.filter(function (c) {
+                            return !isConflictAcknowledged(c);
+                        }).length;
+                    } else if (savedDoctorCache && typeof savedDoctorCache.unackConflicts === "number") {
+                        unackCount = savedDoctorCache.unackConflicts;
+                    } else if (savedDoctorCache) {
+                        unackCount = savedDoctorCache.conflicts || 0;
+                    }
                     var dCount = pathDoctorReport ? (pathDoctorReport.duplicateEntries || 0) : (savedDoctorCache ? savedDoctorCache.duplicates || 0 : 0);
-                    if (cCount > 0 || dCount > 0) {
-                        subText.textContent = t("home.metric.conflictDupSub", cCount, dCount);
+                    if (unackCount > 0 || dCount > 0) {
+                        subText.textContent = t("home.metric.conflictDupSub", unackCount, dCount);
                     } else {
                         subText.textContent = t("home.metric.healthySub");
                     }
@@ -2808,24 +2817,59 @@
 
     function detectSoftwareFromPath(rawPath) {
         var p = (rawPath || "").toLowerCase();
+        // 1. AI / LLM & Coding Agents
+        if (p.includes("ollama")) {
+            return { name: "Ollama", icon: window.LazyEnvIcons.getIcon("ollama", "runtime") || '<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1zm0 2.5a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9z"/></svg>', category: "ai" };
+        }
+        if (p.includes("deepseek") || p.includes("hermes") || p.includes("minimax") || p.includes("mnemon") || p.includes("cua") || p.includes("antigravity")) {
+            return { name: "AI Agent", icon: '<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M6 12.5a.5.5 0 0 0 .5.5h3a.5.5 0 0 0 0-1h-3a.5.5 0 0 0-.5.5zM3 8.062C3 5.127 5.091 3 7.828 3h.344C10.909 3 13 5.127 13 8.062c0 1.25-.492 2.37-1.306 3.19-.247.247-.444.53-.594.848l-.02.043A1.99 1.99 0 0 1 9.5 13h-3c-.63 0-1.205-.292-1.58-.757l-.02-.043a2.98 2.98 0 0 1-.594-.848C3.492 10.432 3 9.312 3 8.062z"/></svg>', category: "ai" };
+        }
+        // 2. Package Managers & Shims
+        if (p.includes("scoop\shims") || p.includes("scoop")) {
+            return { name: "Scoop", icon: '<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M4 1.5H3a2 2 0 0 0-2 2V14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V3.5a2 2 0 0 0-2-2h-1v1h1a1 1 0 0 1 1 1V14a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3.5a1 1 0 0 1 1-1h1v-1z"/><path d="M9.5 1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-3a.5.5 0 0 1-.5-.5v-1a.5.5 0 0 1 .5-.5h3z"/></svg>', category: "pkgmgr" };
+        }
+        if (p.includes("chocolatey")) {
+            return { name: "Chocolatey", icon: '<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M0 4.5A2.5 2.5 0 0 1 2.5 2h11A2.5 2.5 0 0 1 16 4.5v7a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 0 11.5v-7z"/></svg>', category: "pkgmgr" };
+        }
+        if (p.includes("pnpm")) {
+            return { name: "pnpm", icon: window.LazyEnvIcons.getIcon("pnpm", "tool") || '<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M0 0h6v6H0zm8 0h6v6H8zm-8 8h6v6H0zm8 8h6v-6H8z"/></svg>', category: "pkgmgr" };
+        }
+        if (p.includes("bun")) {
+            return { name: "Bun", icon: window.LazyEnvIcons.getIcon("bun", "language") || '<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 2a6 6 0 1 0 0 12A6 6 0 0 0 8 2z"/></svg>', category: "runtime" };
+        }
+        if (p.includes("unigetui")) {
+            return { name: "UniGetUI", icon: '<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0-1A6 6 0 1 0 8 2a6 6 0 0 0 0 12z"/></svg>', category: "pkgmgr" };
+        }
+        // 3. Mobile & Cross-platform SDKs
+        if (p.includes("flutter") || p.includes("dart-sdk")) {
+            return { name: "Flutter SDK", icon: '<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8.5 0L1 7.5l2.5 2.5L13.5 0H8.5zm5 7.5L9.75 11.25 12.25 13.75 16 10l-2.5-2.5zM6 12.5L3.5 10 1 12.5 4.5 16h5L6 12.5z"/></svg>', category: "mobile" };
+        }
+        if (p.includes("platform-tools") || p.includes("cmdline-tools") || p.includes("android")) {
+            return { name: "Android SDK", icon: '<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M2.76 3.066a.5.5 0 0 1 .654-.25l1.637.737A6.47 6.47 0 0 1 8 3.25c1.026 0 1.996.24 2.95.703l1.636-.737a.5.5 0 0 1 .414.912l-1.503.677A6.474 6.474 0 0 1 14.5 9.75H1.5c0-1.92.836-3.645 2.167-4.839L2.51 4.234a.5.5 0 0 1 .25-.654zM5.5 6.5a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5zm5 0a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5z"/></svg>', category: "mobile" };
+        }
+        // 4. Primary Languages & Runtimes
         if (p.includes("python") || p.includes("pip") || p.includes("conda")) {
             return { name: "Python", icon: window.LazyEnvIcons.getIcon("python", "language"), category: "language" };
         }
-        if (p.includes("oracle") || p.includes("java") || p.includes("jdk") || p.includes("jre")) {
+        if (p.includes("oracle") || p.includes("java") || p.includes("jdk") || p.includes("jre") || p.includes("openjdk")) {
             return { name: "Java JDK", icon: window.LazyEnvIcons.getIcon("java", "language"), category: "language" };
         }
         if (p.includes("git") || p.includes("github")) {
             return { name: "Git", icon: window.LazyEnvIcons.getIcon("git", "tool"), category: "tool" };
         }
-        if (p.includes("nodejs") || p.includes("npm") || p.includes("pnpm") || p.includes("yarn")) {
+        if (p.includes("nodejs") || p.includes("npm") || p.includes("yarn")) {
             return { name: "Node.js", icon: window.LazyEnvIcons.getIcon("node", "language"), category: "language" };
         }
         if (p.includes("cargo") || p.includes("rustup") || p.includes("rust")) {
             return { name: "Rust", icon: window.LazyEnvIcons.getIcon("rustc", "language"), category: "language" };
         }
-        if (p.includes("go\\bin") || p.includes("golang")) {
+        if (p.includes("go\bin") || p.includes("golang") || p.includes("goroot") || p.includes("gopath")) {
             return { name: "Go", icon: window.LazyEnvIcons.getIcon("go", "language"), category: "language" };
         }
+        if (p.includes("dotnet")) {
+            return { name: ".NET SDK", icon: window.LazyEnvIcons.getIcon("dotnet", "language") || '<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M0 4a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V4z"/></svg>', category: "runtime" };
+        }
+        // 5. Editors & Cloud & Utilities
         if (p.includes("vscode") || p.includes("microsoft vs code") || p.includes("code.exe")) {
             return { name: "VS Code", icon: window.LazyEnvIcons.getIcon("code", "editor"), category: "editor" };
         }
@@ -2835,12 +2879,37 @@
         if (p.includes("cmake")) {
             return { name: "CMake", icon: window.LazyEnvIcons.getIcon("cmake", "tool"), category: "tool" };
         }
-        if (p.includes("system32") || p.includes("syswow64") || p.includes("windows") || p.includes("powershell")) {
-            return { name: "Windows", icon: window.LazyEnvIcons.getIcon("pwsh", "tool"), category: "system" };
+        if (p.includes("tesseract")) {
+            return { name: "Tesseract OCR", icon: '<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M0 2a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V2z"/></svg>', category: "utility" };
+        }
+        if (p.includes("powertoys")) {
+            return { name: "PowerToys", icon: '<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M7 14s-1 0-1-1 1-4 5-4 5 3 5 4-1 1-1 1H7zm4-6a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/></svg>', category: "utility" };
+        }
+        if (p.includes("google-cloud-sdk") || p.includes("gcloud")) {
+            return { name: "Google Cloud", icon: '<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M4.406 3.342A5.53 5.53 0 0 1 8 2c2.69 0 4.923 2 5.166 4.579A3.998 3.998 0 0 1 12 14H4a4 4 0 0 1-.406-7.978z"/></svg>', category: "cloud" };
+        }
+        if (p.includes("nvidia")) {
+            return { name: "NVIDIA", icon: '<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0a8 8 0 1 0 0 16A8 8 0 0 0 8 0z"/></svg>', category: "hardware" };
+        }
+        // 6. Windows Core & Shells
+        if (p.includes("powershell\\7") || p.includes("pwsh")) {
+            return { name: "PowerShell 7", icon: window.LazyEnvIcons.getIcon("pwsh", "tool"), category: "system" };
+        }
+        if (p.includes("windowspowershell")) {
+            return { name: "PowerShell 5.1", icon: window.LazyEnvIcons.getIcon("pwsh", "tool"), category: "system" };
+        }
+        if (p.includes("openssh")) {
+            return { name: "OpenSSH", icon: '<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M3.5 11.5a3.5 3.5 0 1 1 3.163-5H14L15.5 8 14 9.5l-1-1-1 1-1-1-1 1-1.337-1.337A3.5 3.5 0 0 1 3.5 11.5z"/></svg>', category: "system" };
+        }
+        if (p.includes("system32") || p.includes("syswow64")) {
+            return { name: "Windows 核心", icon: '<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M0 2.221L6.545 1.33v6.242H0V2.221zm0 6.007h6.545v6.242L0 13.579V8.228zm7.322-6.985L16 0v7.572H7.322V1.243zm8.678 7.029V16l-8.678-1.243V8.272H16z"/></svg>', category: "system" };
+        }
+        if (p.includes("wbem")) {
+            return { name: "Windows WMI", icon: '<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M0 2.221L6.545 1.33v6.242H0V2.221zm0 6.007h6.545v6.242L0 13.579V8.228zm7.322-6.985L16 0v7.572H7.322V1.243zm8.678 7.029V16l-8.678-1.243V8.272H16z"/></svg>', category: "system" };
         }
         return { name: "App", icon: '<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M1 2.5A1.5 1.5 0 0 1 2.5 1h3A1.5 1.5 0 0 1 7 2.5v1h6.5A1.5 1.5 0 0 1 16 5v8.5a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 0 13.5v-11z"/></svg>', category: "other" };
     }
-    function calculateDynamicScore(rep) {
+        function calculateDynamicScore(rep) {
         var unackConflicts = (rep.conflicts || []).filter(function (c) {
             return !isConflictAcknowledged(c);
         });
@@ -2927,6 +2996,26 @@
                 gradeBadge.classList.add("badge--grade-danger");
                 gradeBadge.textContent = t("doctor.gradeDanger") + " (" + target + ")";
             }
+        }
+    }
+
+    function getOfficialDocUrl(ecoKey) {
+        switch ((ecoKey || "").toLowerCase()) {
+            case "python":
+                return "https://docs.python.org/3/using/windows.html#finding-the-python-executable";
+            case "java":
+                return "https://docs.oracle.com/en/java/javase/17/install/installation-jdk-microsoft-windows-platforms.html";
+            case "node.js":
+            case "nodejs":
+                return "https://nodejs.org/en/learn/getting-started/how-to-install-nodejs";
+            case "git":
+                return "https://gitforwindows.org/";
+            case "go":
+                return "https://go.dev/doc/install";
+            case "rust":
+                return "https://www.rust-lang.org/tools/install";
+            default:
+                return "https://learn.microsoft.com/en-us/windows/win32/procthread/environment-variables";
         }
     }
 
@@ -3109,6 +3198,7 @@
                 '<div class="path-row-dir-sub" title="' + esc(e.rawPath) + '">' + esc(e.rawPath) + '</div>' +
                 '</div>' +
                 '<div class="path-row-actions">' +
+                '<button class="btn btn--xs btn-row-copy" title="' + esc(t("doctor.btnCopyPath")) + '">&#128203; ' + esc(t("doctor.btnCopyPath")) + '</button>' +
                 '<button class="btn btn--xs btn-row-top" title="' + esc(t("doctor.moveTop")) + '">' + esc(t("doctor.moveTop")) + '</button>' +
                 '<button class="btn btn--xs btn-row-up" title="' + esc(t("doctor.moveUp")) + '">&#9650;</button>' +
                 '<button class="btn btn--xs btn-row-down" title="' + esc(t("doctor.moveDown")) + '">&#9660;</button>' +
@@ -3121,6 +3211,24 @@
         container.innerHTML = html;
 
         // Bind Row Action Buttons
+        container.querySelectorAll(".btn-row-copy").forEach(function (btn) {
+            btn.addEventListener("click", function () {
+                var row = btn.closest(".path-row-item");
+                var p = row.getAttribute("data-path");
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(p);
+                } else {
+                    var inp = document.createElement("input");
+                    inp.value = p;
+                    document.body.appendChild(inp);
+                    inp.select();
+                    document.execCommand("copy");
+                    inp.remove();
+                }
+                showToast(t("doctor.copySuccess"), "info");
+            });
+        });
+
         container.querySelectorAll(".btn-row-top").forEach(function (btn) {
             btn.addEventListener("click", function () {
                 var row = btn.closest(".path-row-item");
@@ -3200,6 +3308,17 @@
 
         // Dynamic Score Calculation
         var dynamic = calculateDynamicScore(rep);
+        lastDoctorScore = dynamic.score;
+        try {
+            localStorage.setItem("lazyenv_doctor_cache", JSON.stringify({
+                score: dynamic.score,
+                time: Date.now(),
+                conflicts: (rep.conflicts || []).length,
+                unackConflicts: dynamic.unackConflictsCount,
+                duplicates: rep.duplicateEntries || 0
+            }));
+        } catch (_) {}
+        renderHomeMetrics();
         animateScoreTo(dynamic.score);
 
         // Update Status Subtitle
@@ -3348,6 +3467,8 @@
                         cHtml += '<button class="btn btn--sm btn-fix-alias btn-switch-active" data-tool="' + esc(firstC.command) + '" data-path="' + esc(firstC.shadowedPath) + '">' + esc(t("doctor.btnFixAlias")) + '</button>';
                     }
 
+                    cHtml += '<button class="btn btn--sm btn-open-official-doc" data-url="' + esc(getOfficialDocUrl(key)) + '" title="在默认浏览器中打开官方权威技术手册">' + esc(t("doctor.btnOfficialDoc")) + '</button>';
+
                     cHtml += '</div></div>';
                 });
 
@@ -3365,6 +3486,13 @@
                                 chev.style.transform = isOpen ? "rotate(0deg)" : "rotate(180deg)";
                             }
                         }
+                    });
+                });
+
+                conflictList.querySelectorAll(".btn-open-official-doc").forEach(function (btn) {
+                    btn.addEventListener("click", function () {
+                        var url = btn.getAttribute("data-url");
+                        if (url) sendNative({ action: "openUrl", url: url });
                     });
                 });
 
