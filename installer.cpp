@@ -597,7 +597,7 @@ bool Installer::removeFromUserPath(const std::string& directory) {
 bool Installer::isCommandAvailable(const std::string& command) {
     if (command.empty()) return false;
     std::string output;
-    std::string cmd = (command.front() == '"') ? ("where " + command) : ("where "" + command + """);
+    std::string cmd = (command.front() == '"') ? ("where " + command) : ("where \"" + command + "\"");
     int rc = runCommand(cmd, output, 5000);
     return rc == 0 && !output.empty();
 }
@@ -657,14 +657,21 @@ bool launchProcess(const std::string& cmdLine, HANDLE hWritePipe,
     si.hStdError  = hWritePipe;
     si.wShowWindow = SW_HIDE;
 
-    std::string fullCmd = "cmd /c \"chcp 65001 >nul && " + cmdLine + "\"";
+    std::string fullCmd = "cmd /s /c \"chcp 65001 >nul && " + cmdLine + "\"";
 
     int wlen = MultiByteToWideChar(CP_UTF8, 0, fullCmd.c_str(), -1, nullptr, 0);
     if (wlen <= 0) return false;
     std::wstring wcmd(wlen, L'\0');
     MultiByteToWideChar(CP_UTF8, 0, fullCmd.c_str(), -1, &wcmd[0], wlen);
 
-    si.hStdInput = GetStdHandle(STD_INPUT_HANDLE);
+    HANDLE hStdIn = GetStdHandle(STD_INPUT_HANDLE);
+    HANDLE hNul = nullptr;
+    if (!hStdIn || hStdIn == INVALID_HANDLE_VALUE) {
+        hNul = CreateFileW(L"NUL", GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, 0, nullptr);
+        si.hStdInput = hNul;
+    } else {
+        si.hStdInput = hStdIn;
+    }
 
     BOOL ok = CreateProcessW(
         nullptr,
@@ -678,6 +685,10 @@ bool launchProcess(const std::string& cmdLine, HANDLE hWritePipe,
         &si,
         &pi
     );
+
+    if (hNul) {
+        CloseHandle(hNul);
+    }
 
     return ok != FALSE;
 }
@@ -707,21 +718,46 @@ int Installer::runCommand(const std::string& cmdLine,
         CloseHandle(ph.hWrite);
     }
 
-    // Read all output
+    // Read all output with timeout-safe polling
     char buf[4096];
     DWORD bytesRead = 0;
-    while (ReadFile(ph.hRead, buf, sizeof(buf) - 1, &bytesRead, nullptr) && bytesRead > 0) {
-        buf[bytesRead] = '\0';
-        output += buf;
+    auto startTime = std::chrono::steady_clock::now();
+
+    while (true) {
+        DWORD bytesAvail = 0;
+        if (PeekNamedPipe(ph.hRead, nullptr, 0, nullptr, &bytesAvail, nullptr) && bytesAvail > 0) {
+            DWORD toRead = (std::min)(static_cast<DWORD>(sizeof(buf) - 1), bytesAvail);
+            if (ReadFile(ph.hRead, buf, toRead, &bytesRead, nullptr) && bytesRead > 0) {
+                buf[bytesRead] = '\0';
+                output += buf;
+                continue;
+            }
+        }
+
+        DWORD waitRes = WaitForSingleObject(pi.hProcess, 50);
+        if (waitRes == WAIT_OBJECT_0) {
+            while (PeekNamedPipe(ph.hRead, nullptr, 0, nullptr, &bytesAvail, nullptr) && bytesAvail > 0) {
+                DWORD toRead = (std::min)(static_cast<DWORD>(sizeof(buf) - 1), bytesAvail);
+                if (ReadFile(ph.hRead, buf, toRead, &bytesRead, nullptr) && bytesRead > 0) {
+                    buf[bytesRead] = '\0';
+                    output += buf;
+                } else {
+                    break;
+                }
+            }
+            break;
+        }
+
+        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - startTime).count();
+        if (elapsed >= timeoutMs) {
+            TerminateProcess(pi.hProcess, static_cast<UINT>(-1));
+            break;
+        }
     }
 
     CloseHandle(ph.hRead);
     output = ensureUtf8(output);
-
-    DWORD waitRes = WaitForSingleObject(pi.hProcess, timeoutMs);
-    if (waitRes == WAIT_TIMEOUT) {
-        TerminateProcess(pi.hProcess, static_cast<UINT>(-1));
-    }
 
     DWORD exitCode = 0;
     GetExitCodeProcess(pi.hProcess, &exitCode);
@@ -755,17 +791,14 @@ int Installer::runCommandStreaming(const std::string& cmdLine,
         CloseHandle(ph.hWrite);
     }
 
-    // Read output and split into lines, calling onLine for each
+    // Read output and split into lines with timeout-safe polling
     std::string lineBuffer;
     char buf[1024];
     DWORD bytesRead = 0;
+    auto startTime = std::chrono::steady_clock::now();
 
-    while (ReadFile(ph.hRead, buf, sizeof(buf) - 1, &bytesRead, nullptr) && bytesRead > 0) {
-        buf[bytesRead] = '\0';
-        fullOutput += buf;
-
-        // Split into lines
-        for (DWORD i = 0; i < bytesRead; ++i) {
+    auto processBytes = [&](DWORD count) {
+        for (DWORD i = 0; i < count; ++i) {
             if (buf[i] == '\n') {
                 if (!lineBuffer.empty() && lineBuffer.back() == '\r')
                     lineBuffer.pop_back();
@@ -775,6 +808,41 @@ int Installer::runCommandStreaming(const std::string& cmdLine,
             } else {
                 lineBuffer += buf[i];
             }
+        }
+    };
+
+    while (true) {
+        DWORD bytesAvail = 0;
+        if (PeekNamedPipe(ph.hRead, nullptr, 0, nullptr, &bytesAvail, nullptr) && bytesAvail > 0) {
+            DWORD toRead = (std::min)(static_cast<DWORD>(sizeof(buf) - 1), bytesAvail);
+            if (ReadFile(ph.hRead, buf, toRead, &bytesRead, nullptr) && bytesRead > 0) {
+                buf[bytesRead] = '\0';
+                fullOutput += buf;
+                processBytes(bytesRead);
+                continue;
+            }
+        }
+
+        DWORD waitRes = WaitForSingleObject(pi.hProcess, 50);
+        if (waitRes == WAIT_OBJECT_0) {
+            while (PeekNamedPipe(ph.hRead, nullptr, 0, nullptr, &bytesAvail, nullptr) && bytesAvail > 0) {
+                DWORD toRead = (std::min)(static_cast<DWORD>(sizeof(buf) - 1), bytesAvail);
+                if (ReadFile(ph.hRead, buf, toRead, &bytesRead, nullptr) && bytesRead > 0) {
+                    buf[bytesRead] = '\0';
+                    fullOutput += buf;
+                    processBytes(bytesRead);
+                } else {
+                    break;
+                }
+            }
+            break;
+        }
+
+        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - startTime).count();
+        if (elapsed >= timeoutMs) {
+            TerminateProcess(pi.hProcess, static_cast<UINT>(-1));
+            break;
         }
     }
 
@@ -787,8 +855,6 @@ int Installer::runCommandStreaming(const std::string& cmdLine,
 
     CloseHandle(ph.hRead);
     fullOutput = ensureUtf8(fullOutput);
-
-    WaitForSingleObject(pi.hProcess, timeoutMs);
 
     DWORD exitCode = 0;
     GetExitCodeProcess(pi.hProcess, &exitCode);

@@ -429,7 +429,7 @@
                 break;
 
             case "verifyResult":
-                showDialog(
+                showDialogRaw(
                     t("toast.verifyTitle", d.command),
                     "<div class='log-panel' style='max-height:160px; font-size:13px; font-family:var(--font-mono);'>" + esc(d.output || "No output returned") + "</div>",
                     [{ text: t("dialog.ok"), cls: "btn--accent" }]
@@ -495,6 +495,7 @@
                 preInstallSnapshotId = d.snapshotId || preInstallSnapshotId;
                 updateProgressBar();
                 renderInstallList();
+                sendNative({ action: "detectEnvironments" });
                 break;
 
             case "snapshotCreated":
@@ -1135,13 +1136,15 @@
             btn.addEventListener("click", function (ev) {
                 ev.stopPropagation();
                 var row = btn.closest(".card-row");
-                var name = row.querySelector(".card-row__title").textContent;
+                var cmd = row.getAttribute("data-cmd") || "";
+                var titleSpan = row.querySelector(".card-row__title span");
+                var displayName = titleSpan ? titleSpan.textContent.trim() : (cmd || "package");
                 showDialog(
                     t("env.confirmUninstallTitle"),
-                    t("env.confirmUninstall", name),
+                    t("env.confirmUninstall", displayName),
                     [
                         { text: t("dialog.cancel"), cls: "" },
-                        { text: t("env.btnUninstall"), cls: "btn--danger", action: function () { sendNative({ action: "uninstallPackage", command: name }); } }
+                        { text: t("env.btnUninstall"), cls: "btn--danger", action: function () { sendNative({ action: "uninstallPackage", command: cmd, name: displayName }); } }
                     ]
                 );
             });
@@ -1170,7 +1173,7 @@
                         {
                             text: t("doctor.btnSetActive"),
                             cls: "btn--accent",
-                            handler: function () {
+                            action: function () {
                                 sendNative({ action: "switchVersion", tool: tool, path: p });
                             }
                         }
@@ -1942,9 +1945,17 @@
     }
 
     function renderSnapshots(snaps) {
-        var list = document.getElementById("snapshotList");
+        var targets = [
+            document.getElementById("snapshotList"),
+            document.getElementById("timeMachineSnapshotList")
+        ].filter(Boolean);
+
+        if (targets.length === 0) return;
+
         if (snaps.length === 0) {
-            list.innerHTML = '<div class="empty-state">' + esc(t("recovery.emptyState")) + '</div>';
+            targets.forEach(function (list) {
+                list.innerHTML = '<div class="empty-state">' + esc(t("recovery.emptyState")) + '</div>';
+            });
             return;
         }
 
@@ -1963,9 +1974,9 @@
                 '</div></div>';
         });
 
-        list.innerHTML = html;
-
-        list.querySelectorAll(".card-row").forEach(function (row) {
+        targets.forEach(function (list) {
+            list.innerHTML = html;
+            list.querySelectorAll(".card-row").forEach(function (row) {
             var id = row.dataset.id;
             if (!id) return;
             row.querySelector(".btn-restore").addEventListener("click", function (e) {
@@ -1986,13 +1997,14 @@
             row.querySelector(".btn-delete").addEventListener("click", function (e) {
                 e.stopPropagation();
                 showDialog(
-                    t("recovery.confirmDeleteTitle"),
-                    t("recovery.confirmDelete"),
-                    [
-                        { text: t("dialog.cancel"), cls: "" },
-                        { text: t("recovery.btnDelete"), cls: "btn--danger", action: function () { sendNative({ action: "deleteSnapshot", snapshotId: id }); } }
-                    ]
-                );
+                        t("recovery.confirmDeleteTitle"),
+                        t("recovery.confirmDelete"),
+                        [
+                            { text: t("dialog.cancel"), cls: "" },
+                            { text: t("recovery.btnDelete"), cls: "btn--danger", action: function () { sendNative({ action: "deleteSnapshot", snapshotId: id }); } }
+                        ]
+                    );
+                });
             });
         });
     }
@@ -2543,7 +2555,7 @@
                             action: function () {
                                 sendNative({
                                     action: "restoreSnapshot",
-                                    id: summary.snapshotId
+                                    snapshotId: summary.snapshotId
                                 });
                                 showToast(t("diag.rollbackSuccess"), "success");
                                 box.style.display = "none";
@@ -2956,7 +2968,7 @@
         var conflictDeduct = Math.min(20, unackConflicts.length * 4);
         var totLen = (rep.userPathLength || 0) + (rep.systemPathLength || 0);
         var lenDeduct = 0;
-        if (totLen > 8192) lenDeduct = 10;
+        if (totLen > 8192) lenDeduct = 20;
         else if (totLen > 4096) lenDeduct = 10;
         else if (totLen > 2048) lenDeduct = 5;
 
@@ -3180,6 +3192,7 @@
             if (pathExplorerFilter === "user") return !item.isSys;
             if (pathExplorerFilter === "system") return item.isSys;
             if (pathExplorerFilter === "issues") return !item.entry.exists || item.entry.isDuplicate;
+            if (pathExplorerFilter === "valid") return item.entry.exists && !item.entry.isDuplicate;
             return true;
         });
 
@@ -4133,8 +4146,11 @@
                     pipMirror: item.mirrors.pip,
                     missingPackages: missing,
                     installedPackages: ready,
-                    varsCount: 1,
-                    pathsCount: 1
+                    varsCount: (item.envVars || []).length,
+                    pathsCount: (item.paths || []).length || 1,
+                    envVars: item.envVars || [],
+                    paths: item.paths || [],
+                    isFeatured: true
                 };
 
                 currentRecipeDiff = diff;
@@ -4393,7 +4409,11 @@
                                 recipeName: currentRecipeDiff.recipeName,
                                 npmMirror: currentRecipeDiff.npmMirror || "",
                                 pipMirror: currentRecipeDiff.pipMirror || "",
-                                missingPackageIds: pids
+                                missingPackageIds: pids,
+                                missingPackages: currentRecipeDiff.missingPackages || [],
+                                environmentVariables: currentRecipeDiff.envVars || [],
+                                paths: currentRecipeDiff.paths || [],
+                                isFeatured: !!currentRecipeDiff.isFeatured
                             });
                             showToast(t("recipes.deployStarting", currentRecipeDiff.recipeName), "info");
                         }

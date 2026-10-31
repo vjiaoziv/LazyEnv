@@ -69,6 +69,52 @@ static lazyenv::EnvironmentRecipe g_lastImportedRecipe;
 // ---------------------------------------------------------------------------
 namespace {
 
+std::string toLower(std::string s) {
+    for (auto& c : s) {
+        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    }
+    return s;
+}
+
+static const std::unordered_map<std::string, std::vector<std::string>> kPackageToCmds = {
+    {"Microsoft.VisualStudioCode", {"code"}},
+    {"Rustlang.Rustup",            {"rustup", "rustc", "cargo"}},
+    {"Neovim.Neovim",              {"nvim"}},
+    {"Python.Python.3.12",         {"python", "python3"}},
+    {"OpenJS.NodeJS.LTS",          {"node"}},
+    {"GoLang.Go",                  {"go"}},
+    {"Oracle.JDK.21",              {"java", "javac"}},
+    {"Kitware.CMake",              {"cmake"}},
+    {"Ninja-build.Ninja",          {"ninja"}},
+    {"LLVM.LLVM",                  {"clang", "clang++", "llvm"}},
+    {"Git.Git",                    {"git"}},
+    {"GitHub.cli",                 {"gh"}},
+    {"Docker.DockerDesktop",       {"docker"}},
+    {"PostgreSQL.PostgreSQL.16",   {"psql", "postgres"}},
+    {"Redis.Redis",                {"redis-cli", "redis-server"}},
+    {"jqlang.jq",                  {"jq"}},
+    {"BurntSushi.ripgrep.MSVC",    {"rg", "ripgrep"}},
+    {"sharkdp.fd",                 {"fd"}},
+    {"junegunn.fzf",               {"fzf"}},
+    {"WinSCP.WinSCP",              {"winscp"}},
+    {"astral-sh.uv",               {"uv"}},
+    {"Schniz.fnm",                 {"fnm"}},
+    {"version-fox.vfox",           {"vfox"}},
+    {"jdx.mise",                   {"mise"}},
+    {"Microsoft.WindowsTerminal",  {"wt"}},
+    {"Microsoft.PowerShell",       {"pwsh"}},
+    {"Starship.Starship",          {"starship"}},
+    {"ajeetdsouza.zoxide",         {"zoxide"}},
+    {"sharkdp.bat",                {"bat"}},
+    {"eza-community.eza",          {"eza"}},
+    {"7zip.7zip",                  {"7z"}},
+    {"Kubernetes.kubectl",         {"kubectl"}},
+    {"Helm.Helm",                  {"helm"}},
+    {"Hashicorp.Terraform",        {"terraform"}},
+    {"DBeaver.DBeaver.Community",  {"dbeaver"}},
+    {"Postman.Postman",            {"postman"}}
+};
+
 std::wstring utf8ToWide(const std::string& s) {
     if (s.empty()) return {};
     int len = MultiByteToWideChar(CP_UTF8, 0, s.data(),
@@ -472,6 +518,61 @@ std::vector<lazyenv::DetectedEnvItem> parseEnvironmentsFromJson(const std::strin
     return list;
 }
 
+std::vector<lazyenv::RecipePackageItem> parseMissingPackagesFromJson(const std::string& message) {
+    std::vector<lazyenv::RecipePackageItem> items;
+    auto pPos = message.find("\"missingPackages\"");
+    if (pPos == std::string::npos) return items;
+    auto startArr = message.find('[', pPos);
+    if (startArr == std::string::npos) return items;
+    auto endArr = message.rfind(']');
+    if (endArr == std::string::npos || endArr <= startArr) return items;
+
+    size_t pos = startArr + 1;
+    while (pos < endArr) {
+        auto oStart = message.find('{', pos);
+        if (oStart == std::string::npos || oStart >= endArr) break;
+        auto oEnd = message.find('}', oStart);
+        if (oEnd == std::string::npos || oEnd > endArr) break;
+        std::string itemJson = message.substr(oStart, oEnd - oStart + 1);
+        lazyenv::RecipePackageItem itm;
+        itm.id = extractJsonValue(itemJson, "id");
+        itm.name = extractJsonValue(itemJson, "name");
+        itm.source = extractJsonValue(itemJson, "source");
+        if (itm.source.empty()) itm.source = "winget";
+        itm.version = extractJsonValue(itemJson, "version");
+        if (!itm.id.empty()) items.push_back(itm);
+        pos = oEnd + 1;
+    }
+    return items;
+}
+
+std::vector<lazyenv::RecipeEnvVar> parseEnvVarsFromJson(const std::string& message) {
+    std::vector<lazyenv::RecipeEnvVar> vars;
+    auto vPos = message.find("\"environmentVariables\"");
+    if (vPos == std::string::npos) return vars;
+    auto startArr = message.find('[', vPos);
+    if (startArr == std::string::npos) return vars;
+    auto endArr = message.rfind(']');
+    if (endArr == std::string::npos || endArr <= startArr) return vars;
+
+    size_t pos = startArr + 1;
+    while (pos < endArr) {
+        auto oStart = message.find('{', pos);
+        if (oStart == std::string::npos || oStart >= endArr) break;
+        auto oEnd = message.find('}', oStart);
+        if (oEnd == std::string::npos || oEnd > endArr) break;
+        std::string itemJson = message.substr(oStart, oEnd - oStart + 1);
+        lazyenv::RecipeEnvVar v;
+        v.name = extractJsonValue(itemJson, "name");
+        v.value = extractJsonValue(itemJson, "value");
+        v.type = extractJsonValue(itemJson, "type");
+        if (v.type.empty()) v.type = "REG_SZ";
+        if (!v.name.empty()) vars.push_back(v);
+        pos = oEnd + 1;
+    }
+    return vars;
+}
+
 std::vector<lazyenv::UpgradeTarget> parseUpgradeTargetsFromJson(const std::string& message) {
     std::vector<lazyenv::UpgradeTarget> targets;
     auto tPos = message.find("\"targets\"");
@@ -570,17 +671,42 @@ std::string handleWebMessage(const std::string& message) {
 
     // ------ Uninstall package ------
     if (action == "uninstallPackage") {
-        std::string pkgName = extractJsonValue(message, "command");
-        std::thread([pkgName]() {
+        std::string cmdName = extractJsonValue(message, "command");
+        std::string displayName = extractJsonValue(message, "name");
+        if (displayName.empty()) displayName = cmdName;
+
+        std::thread([cmdName, displayName]() {
             try {
+                std::string wingetId;
+                std::string cmdLower = toLower(cmdName);
+                for (const auto& [pkg, cmds] : kPackageToCmds) {
+                    for (const auto& c : cmds) {
+                        if (toLower(c) == cmdLower) {
+                            wingetId = pkg;
+                            break;
+                        }
+                    }
+                    if (!wingetId.empty()) break;
+                }
+
                 std::string output;
-                std::string cmd = lazyenv::Installer::getWingetExecutable() + " uninstall --name \"" + pkgName + "\" --silent --accept-source-agreements 2>&1";
+                std::string cmd;
+                if (!wingetId.empty()) {
+                    cmd = std::format("{} uninstall --id \"{}\" --exact --silent --accept-source-agreements 2>&1",
+                                      lazyenv::Installer::getWingetExecutable(), wingetId);
+                } else {
+                    cmd = std::format("{} uninstall --name \"{}\" --silent --accept-source-agreements 2>&1",
+                                      lazyenv::Installer::getWingetExecutable(), displayName);
+                }
+
                 int rc = lazyenv::Installer::runCommand(cmd, output, 300000);
                 std::string respMsg = std::format(
                     "{{\"action\":\"uninstallResult\",\"command\":\"{}\",\"success\":{},\"output\":\"{}\"}}",
-                    jsonEscape(pkgName), rc == 0 ? "true" : "false", jsonEscape(output.substr(0, 500)));
+                    jsonEscape(cmdName), rc == 0 ? "true" : "false", jsonEscape(output.substr(0, 500)));
                 g_webview.postMessage(respMsg);
-            } catch (...) {}
+            } catch (...) {
+                g_webview.postMessage("{\"action\":\"uninstallResult\",\"success\":false}");
+            }
         }).detach();
         return "{\"action\":\"uninstallStarted\"}";
     }
@@ -948,26 +1074,40 @@ std::string handleWebMessage(const std::string& message) {
         std::string rName = extractJsonValue(message, "recipeName");
         std::string npmM  = extractJsonValue(message, "npmMirror");
         std::string pipM  = extractJsonValue(message, "pipMirror");
-        auto pkgsToInstall = extractJsonArray(message, "missingPackageIds");
+        bool isFeatured   = extractJsonBool(message, "isFeatured", false);
+        auto missingPkgs  = parseMissingPackagesFromJson(message);
+        if (missingPkgs.empty()) {
+            auto pkgsToInstall = extractJsonArray(message, "missingPackageIds");
+            for (const auto& pid : pkgsToInstall) {
+                lazyenv::RecipePackageItem itm;
+                itm.id = pid;
+                itm.name = pid;
+                itm.source = "winget";
+                missingPkgs.push_back(itm);
+            }
+        }
+        auto passedVars = parseEnvVarsFromJson(message);
+        auto passedPaths = extractJsonArray(message, "paths");
 
-        std::thread([rName, npmM, pipM, pkgsToInstall]() {
+        std::thread([rName, npmM, pipM, isFeatured, missingPkgs, passedVars, passedPaths]() {
             try {
                 lazyenv::RecipeDiffReport diff;
                 diff.recipeName = rName.empty() ? "Deployed Recipe" : rName;
                 diff.mirrors.npm = npmM;
                 diff.mirrors.pip = pipM;
+                diff.missingPackages = missingPkgs;
 
-                for (const auto& pid : pkgsToInstall) {
-                    lazyenv::RecipePackageItem itm;
-                    itm.id = pid;
-                    itm.name = pid;
-                    itm.source = "winget";
-                    diff.missingPackages.push_back(itm);
+                if (isFeatured) {
+                    diff.varsToApply = passedVars;
+                    diff.pathsToApply = passedPaths;
+                    diff.configsToApply.clear();
+                    diff.extensionsToApply.clear();
+                } else {
+                    diff.configsToApply = g_lastImportedRecipe.configFiles;
+                    diff.extensionsToApply = g_lastImportedRecipe.ideExtensions;
+                    diff.varsToApply = g_lastImportedRecipe.environmentVariables;
+                    diff.pathsToApply = g_lastImportedRecipe.paths;
                 }
-                diff.configsToApply = g_lastImportedRecipe.configFiles;
-                diff.extensionsToApply = g_lastImportedRecipe.ideExtensions;
-                diff.varsToApply = g_lastImportedRecipe.environmentVariables;
-                diff.pathsToApply = g_lastImportedRecipe.paths;
 
                 std::string snapId;
                 bool ok = lazyenv::RecipeManager::deployRecipe(
@@ -982,7 +1122,7 @@ std::string handleWebMessage(const std::string& message) {
                 );
 
                 std::ostringstream os;
-                os << "{\"action\":\"deployRecipeComplete\","
+                os << "{\"action\":\"deployRecipeComplete\"," 
                    << "\"success\":" << (ok ? "true" : "false") << ","
                    << "\"snapshotId\":\"" << jsonEscape(snapId) << "\"}";
                 g_webview.postMessage(os.str());
@@ -1078,12 +1218,24 @@ std::string handleWebMessage(const std::string& message) {
     }
 
     // ------ Open path in Windows Explorer (select file or directory) ------
-    if (action == "openPathInExplorer") {
+        if (action == "openPathInExplorer") {
         std::string p = extractJsonValue(message, "path");
         if (!p.empty()) {
             std::wstring wp = utf8ToWide(p);
-            std::wstring param = L"/select,\"" + wp + L"\"";
-            ShellExecuteW(NULL, L"open", L"explorer.exe", param.c_str(), NULL, SW_SHOWNORMAL);
+            DWORD reqLen = ExpandEnvironmentStringsW(wp.c_str(), nullptr, 0);
+            std::wstring expPath = wp;
+            if (reqLen > 0) {
+                expPath.resize(reqLen);
+                ExpandEnvironmentStringsW(wp.c_str(), expPath.data(), reqLen);
+                while (!expPath.empty() && expPath.back() == L'\0') expPath.pop_back();
+            }
+            DWORD attr = GetFileAttributesW(expPath.c_str());
+            if (attr != INVALID_FILE_ATTRIBUTES && (attr & FILE_ATTRIBUTE_DIRECTORY)) {
+                ShellExecuteW(NULL, L"open", expPath.c_str(), NULL, NULL, SW_SHOWNORMAL);
+            } else {
+                std::wstring param = L"/select,\"" + expPath + L"\"";
+                ShellExecuteW(NULL, L"open", L"explorer.exe", param.c_str(), NULL, SW_SHOWNORMAL);
+            }
         }
         return "{\"action\":\"openPathInExplorerResult\",\"success\":true}";
     }
@@ -1611,6 +1763,8 @@ std::string handleWebMessage(const std::string& message) {
             std::string statusStr;
             if (exitCode == 0) {
                 statusStr = "success";
+                if (pkg.addToPath && !pkg.defaultPath.empty())
+                    lazyenv::Installer::addToUserPath(pkg.defaultPath);
             } else if (fullOutput.find("already installed") != std::string::npos ||
                        fullOutput.find("No available upgrade") != std::string::npos) {
                 statusStr = "skipped";
@@ -1908,6 +2062,12 @@ std::string handleWebMessage(const std::string& message) {
         std::string name  = extractJsonValue(message, "name");
         std::string scope = extractJsonValue(message, "scope");
         bool sys = (scope == "system");
+
+        std::string lowName = toLower(name);
+        if (lowName == "path" || lowName == "systemroot" || lowName == "windir" || lowName == "comspec") {
+            return std::format("{{{{\"action\":\"envVarDeleteResult\",\"success\":false,\"name\":\"{}\",\"message\":\"Cannot delete critical system environment variable.\"}}}}",
+                jsonEscape(name));
+        }
 
         HKEY root = sys ? HKEY_LOCAL_MACHINE : HKEY_CURRENT_USER;
         const wchar_t* subKey = sys

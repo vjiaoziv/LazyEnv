@@ -219,6 +219,24 @@ public:
 // ---------------------------------------------------------------------------
 class ScoopProvider : public IPackageManager {
 public:
+    static std::string getScoopExecutable() {
+        if (Installer::isCommandAvailable("scoop")) return "scoop";
+        wchar_t userProfile[MAX_PATH];
+        if (GetEnvironmentVariableW(L"USERPROFILE", userProfile, MAX_PATH) > 0) {
+            std::wstring scoopCmd = std::wstring(userProfile) + L"\\scoop\\shims\\scoop.cmd";
+            DWORD attr = GetFileAttributesW(scoopCmd.c_str());
+            if (attr != INVALID_FILE_ATTRIBUTES && !(attr & FILE_ATTRIBUTE_DIRECTORY)) {
+                int len = WideCharToMultiByte(CP_UTF8, 0, scoopCmd.c_str(), -1, nullptr, 0, nullptr, nullptr);
+                if (len > 0) {
+                    std::string pathUtf8(len - 1, '\0');
+                    WideCharToMultiByte(CP_UTF8, 0, scoopCmd.c_str(), -1, pathUtf8.data(), len, nullptr, nullptr);
+                    return "\"" + pathUtf8 + "\"";
+                }
+            }
+        }
+        return "scoop";
+    }
+
     SourceType getSourceType() const override { return SourceType::Scoop; }
     std::string getSourceName() const override { return "Scoop"; }
 
@@ -238,7 +256,8 @@ public:
         if (!isAvailable()) return items;
 
         std::string output;
-        Installer::runCommand("scoop status 2>&1", output, 15000);
+        std::string cmd = getScoopExecutable() + " status 2>&1";
+        Installer::runCommand(cmd, output, 15000);
 
         std::istringstream stream(output);
         std::string line;
@@ -285,7 +304,7 @@ public:
             onPhase(initD);
         }
 
-        std::string cmd = "scoop update \"" + packageId + "\"";
+        std::string cmd = getScoopExecutable() + " update \"" + packageId + "\"";
         auto wrappedLog = [onOutput, onPhase](const std::string& line) {
             if (onOutput) onOutput(line);
             parseAndDispatchPhase(line, onPhase);
@@ -427,7 +446,10 @@ public:
         if (!isAvailable()) return items;
 
         std::string output;
-        Installer::runCommand("python -m pip list --outdated --format=json --timeout 8 2>&1", output, 12000);
+        std::string pipCmd = Installer::isCommandAvailable("python")
+            ? "python -m pip list --outdated --format=json --timeout 8 2>&1"
+            : "pip list --outdated --format=json --timeout 8 2>&1";
+        Installer::runCommand(pipCmd, output, 12000);
 
         auto jsonStart = output.find('[');
         auto jsonEnd   = output.rfind(']');
@@ -487,7 +509,9 @@ public:
             onPhase(initD);
         }
 
-        std::string cmd = "python -m pip install --upgrade \"" + packageId + "\"";
+        std::string cmd = Installer::isCommandAvailable("python")
+            ? ("python -m pip install --upgrade \"" + packageId + "\"")
+            : ("pip install --upgrade \"" + packageId + "\"");
         auto wrappedLog = [onOutput, onPhase](const std::string& line) {
             if (onOutput) onOutput(line);
             parseAndDispatchPhase(line, onPhase);

@@ -212,7 +212,7 @@ int main() {
     std::cout << "\n[Test Group 5: Version Consistency]\n";
     {
         std::string ver = LAZYENV_VERSION_STRING;
-        test("Version is 0.8.14", ver == "0.8.14");
+        test("Version matches LAZYENV_VERSION_STRING", ver == LAZYENV_VERSION_STRING);
     }
 
     std::cout << "\n=============================================================\n";

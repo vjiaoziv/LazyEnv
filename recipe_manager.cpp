@@ -256,6 +256,41 @@ static const std::unordered_map<std::string, std::vector<std::string>> kPackageT
 
 
 
+
+static size_t findMatchingJsonArrayEnd(const std::string& str, size_t openBracketPos) {
+    if (openBracketPos >= str.size() || str[openBracketPos] != '[') return std::string::npos;
+    bool inStr = false;
+    int depth = 0;
+    for (size_t i = openBracketPos; i < str.size(); ++i) {
+        char c = str[i];
+        if (inStr) {
+            if (c == '\\' && i + 1 < str.size()) {
+                ++i;
+            } else if (c == '"') {
+                inStr = false;
+            }
+        } else {
+            if (c == '"') {
+                inStr = true;
+            } else if (c == '[') {
+                depth++;
+            } else if (c == ']') {
+                depth--;
+                if (depth == 0) return i;
+            }
+        }
+    }
+    return std::string::npos;
+}
+
+static std::string wideToUtf8(const std::wstring& ws) {
+    if (ws.empty()) return {};
+    int len = WideCharToMultiByte(CP_UTF8, 0, ws.data(), static_cast<int>(ws.size()), nullptr, 0, nullptr, nullptr);
+    std::string s(len, '\0');
+    WideCharToMultiByte(CP_UTF8, 0, ws.data(), static_cast<int>(ws.size()), s.data(), len, nullptr, nullptr);
+    return s;
+}
+
 // Match end of JSON object '{' ... '}' taking strings and escapes into account
 
 static size_t findMatchingJsonObjectEnd(const std::string& str, size_t openBracePos) {
@@ -633,272 +668,148 @@ bool RecipeManager::parseRecipeFromJson(const std::string& json, EnvironmentReci
 
 
     // Parse packages
-
     auto pkgPos = json.find("\"packages\"");
-
     if (pkgPos != std::string::npos) {
-
         auto startArr = json.find('[', pkgPos);
+        if (startArr != std::string::npos) {
+            auto endArr = findMatchingJsonArrayEnd(json, startArr);
+            if (endArr != std::string::npos) {
+                size_t pos = startArr + 1;
+                while (pos < endArr) {
+                    auto oStart = json.find('{', pos);
+                    if (oStart == std::string::npos || oStart >= endArr) break;
+                    auto oEnd = findMatchingJsonObjectEnd(json, oStart);
+                    if (oEnd == std::string::npos || oEnd > endArr) break;
 
-        auto endArr   = json.find(']', startArr);
+                    std::string itemJson = json.substr(oStart, oEnd - oStart + 1);
+                    RecipePackageItem item;
+                    item.id      = extractJsonValue(itemJson, "id");
+                    item.name    = extractJsonValue(itemJson, "name");
+                    item.source  = extractJsonValue(itemJson, "source");
+                    item.version = extractJsonValue(itemJson, "version");
+                    if (item.source.empty()) item.source = "winget";
 
-        if (startArr != std::string::npos && endArr != std::string::npos) {
-
-            size_t pos = startArr + 1;
-
-            while (pos < endArr) {
-
-                auto oStart = json.find('{', pos);
-
-                if (oStart == std::string::npos || oStart >= endArr) break;
-
-                auto oEnd = json.find('}', oStart);
-
-                if (oEnd == std::string::npos || oEnd > endArr) break;
-
-
-
-                std::string itemJson = json.substr(oStart, oEnd - oStart + 1);
-
-                RecipePackageItem item;
-
-                item.id      = extractJsonValue(itemJson, "id");
-
-                item.name    = extractJsonValue(itemJson, "name");
-
-                item.source  = extractJsonValue(itemJson, "source");
-
-                item.version = extractJsonValue(itemJson, "version");
-
-                if (item.source.empty()) item.source = "winget";
-
-
-
-                if (!item.id.empty()) {
-
-                    r.packages.push_back(item);
-
+                    if (!item.id.empty()) {
+                        r.packages.push_back(item);
+                    }
+                    pos = oEnd + 1;
                 }
-
-                pos = oEnd + 1;
-
             }
-
         }
-
     }
-
-
 
     // Parse environmentVariables
-
     auto envPos = json.find("\"environmentVariables\"");
-
     if (envPos != std::string::npos) {
-
         auto startArr = json.find('[', envPos);
+        if (startArr != std::string::npos) {
+            auto endArr = findMatchingJsonArrayEnd(json, startArr);
+            if (endArr != std::string::npos) {
+                size_t pos = startArr + 1;
+                while (pos < endArr) {
+                    auto oStart = json.find('{', pos);
+                    if (oStart == std::string::npos || oStart >= endArr) break;
+                    auto oEnd = findMatchingJsonObjectEnd(json, oStart);
+                    if (oEnd == std::string::npos || oEnd > endArr) break;
 
-        auto endArr   = json.find(']', startArr);
+                    std::string itemJson = json.substr(oStart, oEnd - oStart + 1);
+                    RecipeEnvVar v;
+                    v.name  = extractJsonValue(itemJson, "name");
+                    v.value = extractJsonValue(itemJson, "value");
+                    v.type  = extractJsonValue(itemJson, "type");
+                    if (v.type.empty()) v.type = "REG_SZ";
 
-        if (startArr != std::string::npos && endArr != std::string::npos) {
-
-            size_t pos = startArr + 1;
-
-            while (pos < endArr) {
-
-                auto oStart = json.find('{', pos);
-
-                if (oStart == std::string::npos || oStart >= endArr) break;
-
-                auto oEnd = json.find('}', oStart);
-
-                if (oEnd == std::string::npos || oEnd > endArr) break;
-
-
-
-                std::string itemJson = json.substr(oStart, oEnd - oStart + 1);
-
-                RecipeEnvVar v;
-
-                v.name  = extractJsonValue(itemJson, "name");
-
-                v.value = extractJsonValue(itemJson, "value");
-
-                v.type  = extractJsonValue(itemJson, "type");
-
-                if (v.type.empty()) v.type = "REG_SZ";
-
-
-
-                if (!v.name.empty()) {
-
-                    r.environmentVariables.push_back(v);
-
+                    if (!v.name.empty()) {
+                        r.environmentVariables.push_back(v);
+                    }
+                    pos = oEnd + 1;
                 }
-
-                pos = oEnd + 1;
-
             }
-
         }
-
     }
-
-
 
     // Parse paths
-
     auto pathPos = json.find("\"paths\"");
-
     if (pathPos != std::string::npos) {
-
         auto startArr = json.find('[', pathPos);
-
-        auto endArr   = json.find(']', startArr);
-
-        if (startArr != std::string::npos && endArr != std::string::npos) {
-
-            size_t pos = startArr + 1;
-
-            while (pos < endArr) {
-
-                auto q1 = json.find('\"', pos);
-
-                if (q1 == std::string::npos || q1 >= endArr) break;
-
-                auto q2 = json.find('\"', q1 + 1);
-
-                if (q2 == std::string::npos || q2 > endArr) break;
-
-                std::string p = json.substr(q1 + 1, q2 - q1 - 1);
-
-                if (!p.empty()) r.paths.push_back(p);
-
-                pos = q2 + 1;
-
+        if (startArr != std::string::npos) {
+            auto endArr = findMatchingJsonArrayEnd(json, startArr);
+            if (endArr != std::string::npos) {
+                size_t pos = startArr + 1;
+                while (pos < endArr) {
+                    auto q1 = json.find('"', pos);
+                    if (q1 == std::string::npos || q1 >= endArr) break;
+                    auto q2 = json.find('"', q1 + 1);
+                    if (q2 == std::string::npos || q2 > endArr) break;
+                    std::string p = json.substr(q1 + 1, q2 - q1 - 1);
+                    if (!p.empty()) r.paths.push_back(p);
+                    pos = q2 + 1;
+                }
             }
-
         }
-
     }
-
-
 
     // Parse configFiles (v2.0)
-
     auto cfgPos = json.find("\"configFiles\"");
-
     if (cfgPos != std::string::npos) {
-
         auto startArr = json.find('[', cfgPos);
-
         if (startArr != std::string::npos) {
+            auto endArr = findMatchingJsonArrayEnd(json, startArr);
+            if (endArr != std::string::npos) {
+                size_t pos = startArr + 1;
+                while (pos < endArr) {
+                    auto oStart = json.find('{', pos);
+                    if (oStart == std::string::npos || oStart >= endArr) break;
+                    auto oEnd = findMatchingJsonObjectEnd(json, oStart);
+                    if (oEnd == std::string::npos || oEnd > endArr) break;
 
-            size_t pos = startArr + 1;
+                    std::string itemJson = json.substr(oStart, oEnd - oStart + 1);
+                    RecipeConfigFile cfg;
+                    cfg.category       = extractJsonValue(itemJson, "category");
+                    cfg.name           = extractJsonValue(itemJson, "name");
+                    cfg.relativePath   = extractJsonValue(itemJson, "relativePath");
+                    cfg.targetDirMacro = extractJsonValue(itemJson, "targetDirMacro");
+                    cfg.content        = extractJsonValue(itemJson, "content");
+                    std::string b64Str = extractJsonValue(itemJson, "isBase64");
+                    cfg.isBase64       = (b64Str == "true" || itemJson.find("\"isBase64\": true") != std::string::npos);
 
-            while (pos < json.size()) {
-
-                auto oStart = json.find('{', pos);
-
-                if (oStart == std::string::npos) break;
-
-                auto oEnd = findMatchingJsonObjectEnd(json, oStart);
-
-                if (oEnd == std::string::npos) break;
-
-
-
-                std::string itemJson = json.substr(oStart, oEnd - oStart + 1);
-
-                RecipeConfigFile cfg;
-
-                cfg.category       = extractJsonValue(itemJson, "category");
-
-                cfg.name           = extractJsonValue(itemJson, "name");
-
-                cfg.relativePath   = extractJsonValue(itemJson, "relativePath");
-
-                cfg.targetDirMacro = extractJsonValue(itemJson, "targetDirMacro");
-
-                cfg.content        = extractJsonValue(itemJson, "content");
-
-                std::string b64Str = extractJsonValue(itemJson, "isBase64");
-
-                cfg.isBase64       = (b64Str == "true" || itemJson.find("\"isBase64\": true") != std::string::npos);
-
-
-
-                if (!cfg.relativePath.empty()) {
-
-                    r.configFiles.push_back(cfg);
-
+                    if (!cfg.relativePath.empty()) {
+                        r.configFiles.push_back(cfg);
+                    }
+                    pos = oEnd + 1;
                 }
-
-                pos = oEnd + 1;
-
-                if (pos < json.size() && json[pos] == ']') break;
-
             }
-
         }
-
     }
-
-
 
     // Parse ideExtensions (v2.0)
-
     auto extPos = json.find("\"ideExtensions\"");
-
     if (extPos != std::string::npos) {
-
         auto startArr = json.find('[', extPos);
-
         if (startArr != std::string::npos) {
+            auto endArr = findMatchingJsonArrayEnd(json, startArr);
+            if (endArr != std::string::npos) {
+                size_t pos = startArr + 1;
+                while (pos < endArr) {
+                    auto oStart = json.find('{', pos);
+                    if (oStart == std::string::npos || oStart >= endArr) break;
+                    auto oEnd = findMatchingJsonObjectEnd(json, oStart);
+                    if (oEnd == std::string::npos || oEnd > endArr) break;
 
-            size_t pos = startArr + 1;
+                    std::string itemJson = json.substr(oStart, oEnd - oStart + 1);
+                    RecipeIdeExtension ideExt;
+                    ideExt.ide         = extractJsonValue(itemJson, "ide");
+                    ideExt.extensionId = extractJsonValue(itemJson, "extensionId");
+                    ideExt.displayName = extractJsonValue(itemJson, "displayName");
 
-            while (pos < json.size()) {
-
-                auto oStart = json.find('{', pos);
-
-                if (oStart == std::string::npos) break;
-
-                auto oEnd = findMatchingJsonObjectEnd(json, oStart);
-
-                if (oEnd == std::string::npos) break;
-
-
-
-                std::string itemJson = json.substr(oStart, oEnd - oStart + 1);
-
-                RecipeIdeExtension ideExt;
-
-                ideExt.ide         = extractJsonValue(itemJson, "ide");
-
-                ideExt.extensionId = extractJsonValue(itemJson, "extensionId");
-
-                ideExt.displayName = extractJsonValue(itemJson, "displayName");
-
-
-
-                if (!ideExt.extensionId.empty()) {
-
-                    r.ideExtensions.push_back(ideExt);
-
+                    if (!ideExt.extensionId.empty()) {
+                        r.ideExtensions.push_back(ideExt);
+                    }
+                    pos = oEnd + 1;
                 }
-
-                pos = oEnd + 1;
-
-                if (pos < json.size() && json[pos] == ']') break;
-
             }
-
         }
-
     }
-
-
 
     return !r.metadata.name.empty() || !r.packages.empty() || !r.configFiles.empty() || !r.paths.empty();
 
@@ -1465,6 +1376,15 @@ bool RecipeManager::restoreConfigFiles(
 
 
     for (const auto& c : configs) {
+        // Security check: relativePath must not escape baseDir
+        std::string relNorm = c.relativePath;
+        for (char& ch : relNorm) { if (ch == '/') ch = '\\'; }
+        if (relNorm.find("..\\") != std::string::npos || relNorm.find("\\..") != std::string::npos ||
+            relNorm.starts_with("..") || relNorm.find(':') != std::string::npos) {
+            if (onLog) onLog("[LazyEnv] Security warning: skipped suspicious relative path: " + c.relativePath);
+            continue;
+        }
+
 
         std::filesystem::path baseDir;
 
@@ -1678,7 +1598,7 @@ bool RecipeManager::deployRecipe(
 
         if (!snapshotId.empty()) {
 
-            bkpDir = (rollback.getStorageDir() / snapshotId / "configs").string();
+            bkpDir = wideToUtf8((rollback.getStorageDir() / snapshotId / "configs").wstring());
 
         }
 

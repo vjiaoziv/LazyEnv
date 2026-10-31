@@ -67,9 +67,12 @@ async function run() {
 
     await send("Runtime.enable");
 
-    for (let i = 0; i < 20; i++) {
-      const rs = await send("Runtime.evaluate", { expression: "document.readyState", returnByValue: true });
-      if (rs?.result?.value === "complete") break;
+    for (let i = 0; i < 30; i++) {
+      const rs = await send("Runtime.evaluate", {
+        expression: "!!document.querySelector('.sidebar__version')",
+        returnByValue: true
+      });
+      if (rs?.result?.value === true) break;
       await sleep(300);
     }
 
@@ -118,6 +121,12 @@ async function run() {
       returnByValue: true
     });
     test("Time Machine Snapshots subtab pane is visible", snapsVisible?.result?.value === "block");
+    await sleep(400);
+    const tmListContent = await send("Runtime.evaluate", {
+      expression: "document.getElementById('timeMachineSnapshotList')?.children.length > 0",
+      returnByValue: true
+    });
+    test("Time Machine snapshot list populated in subtab", tmListContent?.result?.value === true);
 
     // Test tab switching: Migration Hub
     await send("Runtime.evaluate", {
@@ -183,6 +192,15 @@ async function run() {
       returnByValue: true
     });
     test("Doctor score populated after inspection", (scoreVal?.result?.value ?? 0) > 0, `Score: ${scoreVal?.result?.value}`);
+
+    // Click Valid Entries filter card
+    await send("Runtime.evaluate", { expression: "document.getElementById('cardMetricValid')?.click()" });
+    await sleep(200);
+    const validRowsCount = await send("Runtime.evaluate", {
+      expression: "document.querySelectorAll('#pathExplorerList .path-row-item').length",
+      returnByValue: true
+    });
+    test("Clicking cardMetricValid filters explorer to valid entries", (validRowsCount?.result?.value ?? 0) > 0, `Count: ${validRowsCount?.result?.value}`);
 
     ws.close();
   } catch (err) {

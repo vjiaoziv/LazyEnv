@@ -350,6 +350,7 @@
             "common.installed":                 "Installed",
 
             // Toast Notifications
+            "toast.copyFailed":                "Failed to copy to clipboard.",
             "toast.recipeExportFailed":         "Failed to export environment recipe.",
             "toast.recipeImportFailed":         "Failed to parse or validate recipe file.",
             "toast.recipeDeployFailed":         "Failed to deploy recipe environment.",
@@ -570,6 +571,7 @@
             "summary.skipped":                  "Skipped",
 
             // Dialog
+            "dialog.ok":                       "OK",
             "dialog.cancel":                    "Cancel",
 
             // Errors
@@ -1293,6 +1295,7 @@
             "summary.skipped":                  "\u5df2\u8df3\u8fc7",
 
             // Dialog
+            "dialog.ok":                       "\u786e\u5b9a",
             "dialog.cancel":                    "\u53d6\u6d88",
 
             // Errors

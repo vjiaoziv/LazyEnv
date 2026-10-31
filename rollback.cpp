@@ -32,6 +32,7 @@
 #include <stdexcept>
 #include <format>
 #include <cstdio>
+#include <mutex>
 
 // ---------------------------------------------------------------------------
 // Minimal JSON helpers (no external dependency)
@@ -160,6 +161,58 @@ uint32_t extractJsonUint(const std::string& json, const std::string& key) {
     return static_cast<uint32_t>(std::stoul(json.substr(pos)));
 }
 
+static size_t findMatchingJsonArrayEnd(const std::string& str, size_t openBracketPos) {
+    if (openBracketPos >= str.size() || str[openBracketPos] != '[') return std::string::npos;
+    bool inStr = false;
+    int depth = 0;
+    for (size_t i = openBracketPos; i < str.size(); ++i) {
+        char c = str[i];
+        if (inStr) {
+            if (c == '\\' && i + 1 < str.size()) {
+                ++i;
+            } else if (c == '\"') {
+                inStr = false;
+            }
+        } else {
+            if (c == '\"') {
+                inStr = true;
+            } else if (c == '[') {
+                depth++;
+            } else if (c == ']') {
+                depth--;
+                if (depth == 0) return i;
+            }
+        }
+    }
+    return std::string::npos;
+}
+
+static size_t findMatchingJsonObjectEnd(const std::string& str, size_t openBracePos) {
+    if (openBracePos >= str.size() || str[openBracePos] != '{') return std::string::npos;
+    bool inStr = false;
+    int depth = 0;
+    for (size_t i = openBracePos; i < str.size(); ++i) {
+        char c = str[i];
+        if (inStr) {
+            if (c == '\\' && i + 1 < str.size()) {
+                ++i;
+            } else if (c == '\"') {
+                inStr = false;
+            }
+        } else {
+            if (c == '\"') {
+                inStr = true;
+            } else if (c == '{') {
+                depth++;
+            } else if (c == '}') {
+                depth--;
+                if (depth == 0) return i;
+            }
+        }
+    }
+    return std::string::npos;
+}
+
 // Parse a JSON array of SnapshotEntry objects.
 std::vector<lazyenv::SnapshotEntry> parseEntryArray(const std::string& json,
                                                      const std::string& key) {
@@ -170,20 +223,14 @@ std::vector<lazyenv::SnapshotEntry> parseEntryArray(const std::string& json,
     arrStart = json.find('[', arrStart);
     if (arrStart == std::string::npos) return entries;
 
-    // Find matching ']'
-    int depth = 0;
-    size_t arrEnd = arrStart;
-    for (size_t i = arrStart; i < json.size(); ++i) {
-        if (json[i] == '[') ++depth;
-        else if (json[i] == ']') { --depth; if (depth == 0) { arrEnd = i; break; } }
-    }
+    auto arrEnd = findMatchingJsonArrayEnd(json, arrStart);
+    if (arrEnd == std::string::npos) return entries;
 
-    // Split by '{' ... '}'
-    size_t pos = arrStart;
-    while (true) {
+    size_t pos = arrStart + 1;
+    while (pos < arrEnd) {
         auto objStart = json.find('{', pos);
-        if (objStart == std::string::npos || objStart > arrEnd) break;
-        auto objEnd = json.find('}', objStart);
+        if (objStart == std::string::npos || objStart >= arrEnd) break;
+        auto objEnd = findMatchingJsonObjectEnd(json, objStart);
         if (objEnd == std::string::npos || objEnd > arrEnd) break;
         std::string obj = json.substr(objStart, objEnd - objStart + 1);
         lazyenv::SnapshotEntry e;

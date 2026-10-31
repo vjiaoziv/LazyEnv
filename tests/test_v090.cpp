@@ -253,6 +253,78 @@ int main() {
         std::string ver = LAZYENV_VERSION_STRING;
         test("Version string is 0.9.0", ver == "0.9.0");
     }
+    // -------------------------------------------------------------
+    // Test 8: Security - Path Traversal (Zip Slip) Interception
+    // -------------------------------------------------------------
+    std::cout << "\n[Test Group 8: Security - Path Traversal (Zip Slip) Interception]\n";
+    {
+        namespace fs = std::filesystem;
+        fs::path tempBase = fs::temp_directory_path() / "LazyEnv_Security_Test";
+        std::error_code ec;
+        fs::remove_all(tempBase, ec);
+        fs::create_directories(tempBase, ec);
+
+        fs::path canaryFile = fs::temp_directory_path() / "lazyenv_traversal_canary.txt";
+        fs::remove(canaryFile, ec);
+
+        lazyenv::RecipeConfigFile maliciousCfg;
+        maliciousCfg.category = "git";
+        maliciousCfg.name = "Malicious Config";
+        maliciousCfg.relativePath = "../lazyenv_traversal_canary.txt";
+        maliciousCfg.targetDirMacro = tempBase.string();
+        maliciousCfg.content = "SHOULD_NEVER_BE_WRITTEN";
+
+        std::vector<lazyenv::RecipeConfigFile> cfgs = { maliciousCfg };
+        lazyenv::RecipeManager::restoreConfigFiles(cfgs, "", [](const std::string&){});
+
+        test("Malicious relative path traversal blocked", !fs::exists(canaryFile));
+
+        fs::remove_all(tempBase, ec);
+        fs::remove(canaryFile, ec);
+    }
+
+    // -------------------------------------------------------------
+    // Test 9: Robust JSON Array & String Matching
+    // -------------------------------------------------------------
+    std::cout << "\n[Test Group 9: Robust JSON Array & String Matching]\n";
+    {
+        std::string jsonWithBraces = "{\n"
+            "  \"formatVersion\": \"2.0\",\n"
+            "  \"metadata\": { \"name\": \"ComplexJson\" },\n"
+            "  \"environmentVariables\": [\n"
+            "    {\"name\": \"COMPLEX_VAR\", \"value\": \"prefix {middle} [brackets] suffix\", \"type\": \"REG_SZ\"}\n"
+            "  ],\n"
+            "  \"configFiles\": [\n"
+            "    {\"category\": \"git\", \"name\": \"Cfg\", \"relativePath\": \".gitconfig\", \"targetDirMacro\": \"%USERPROFILE%\", \"content\": \"content with {braces} and [brackets]\", \"isBase64\": false}\n"
+            "  ]\n"
+            "}";
+
+        lazyenv::EnvironmentRecipe r;
+        bool ok = lazyenv::RecipeManager::parseRecipeFromJson(jsonWithBraces, r);
+        test("Parsed JSON with embedded braces and brackets", ok);
+        test("Complex environment variable value preserved exactly", !r.environmentVariables.empty() && r.environmentVariables[0].value == "prefix {middle} [brackets] suffix");
+        test("Config file content with braces preserved exactly", !r.configFiles.empty() && r.configFiles[0].content == "content with {braces} and [brackets]");
+    }
+
+    // -------------------------------------------------------------
+    // Test 10: PATH Doctor Non-redundant Snapshot Protection
+    // -------------------------------------------------------------
+    std::cout << "\n[Test Group 10: PATH Doctor Non-redundant Snapshot Protection]\n";
+    {
+        lazyenv::RollbackManager rollback;
+        std::string snapId;
+        std::string dummyPath = "C:\\Windows\\System32";
+        bool ok = lazyenv::PathDoctor::addPath(dummyPath, false, rollback, snapId);
+        test("addPath 1st call ok", ok);
+        // If dummyPath already exists in User PATH, snapId must be empty
+        // If not, add it again to verify idempotency
+        std::string secondSnapId;
+        bool ok2 = lazyenv::PathDoctor::addPath(dummyPath, false, rollback, secondSnapId);
+        test("addPath idempotent return is true", ok2);
+        test("addPath duplicate does not create redundant snapshot", secondSnapId.empty());
+        std::string cleanupSnap;
+        lazyenv::PathDoctor::removePath(dummyPath, false, rollback, cleanupSnap);
+    }
 
     std::cout << "\n=============================================================\n";
     std::cout << "Test Summary: " << g_passed << " passed, " << g_failed << " failed\n";
