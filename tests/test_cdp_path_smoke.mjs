@@ -4,7 +4,7 @@ import { dirname, join } from 'node:path';
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 import { cpSync, rmSync, existsSync, readdirSync, copyFileSync } from 'node:fs';
 const SRC = join(ROOT, 'build', 'Release');
-const DIR = join(ROOT, 'build', 'smoke 测试%#');
+const DIR = join(ROOT, 'build', 'smoke %# spaced dir');   // ASCII-only: space, %, # trigger the file:// URI bug; CJK dropped for node22+Windows fs.cp compatibility
 const PORT = 9258;
 rmSync(DIR, { recursive: true, force: true });
 cpSync(SRC, DIR, { recursive: true });
