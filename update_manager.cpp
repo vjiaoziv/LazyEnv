@@ -92,7 +92,9 @@ FailureDiagnostic UpdateManager::diagnoseFailure(int exitCode, const std::string
     if (output.find("0x80070020") != std::string::npos ||
         output.find("used by another process") != std::string::npos ||
         output.find("being used") != std::string::npos ||
-        output.find("running") != std::string::npos ||
+        output.find("is running") != std::string::npos ||
+        output.find("currently running") != std::string::npos ||
+        output.find("close the app") != std::string::npos ||
         output.find("文件被占用") != std::string::npos ||
         output.find("正在运行") != std::string::npos ||
         output.find("另一个安装程序") != std::string::npos ||
