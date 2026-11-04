@@ -55,6 +55,7 @@ async function run() {
       const state = proc.exitCode === null ? 'app still running (slow start?)' : `app exited code=${proc.exitCode}`;
       const tail = appOutput ? ` | app output: ${appOutput.slice(-600)}` : '';
       let wv = '<n/a>'; try { wv = execSync('tasklist /FI "IMAGENAME eq msedgewebview2.exe" /NH', { encoding: 'utf8' }).trim().replace(/\r?\n/g, ' | '); } catch {}
+      try { wv += ' || cmd: ' + execSync('powershell -NoProfile -File tests/dump-webview2.ps1', { encoding: 'utf8' }).trim().replace(/\r?\n/g, ' ~~ ' ).slice(0, 2000); } catch (e) { wv += ' || cmd-err: ' + e.message; }
       throw new Error(`Could not find WebView2 CDP endpoint (${state})${tail} | webview2: ${wv}`);
     }
 
