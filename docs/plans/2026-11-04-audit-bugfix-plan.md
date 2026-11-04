@@ -1372,6 +1372,10 @@ Select-String -Path main.cpp -Pattern 'if \(action =='    # 数量应比基线�
 ## 1.2 完成记录（T27 验收，2026-11-04）
 
 - **最终验证**: build exit 0；test_v0814 26/0；test_v090 **68/0**（基线 37 + 新增 Group 11-22 共 31 条）；test_cdp_v090 15/0；test_cdp_v0814 **13/0**（基线 11/2，两个过期断言已修）；test_cdp_path_smoke PASS（T11 新增）。
+- **CI 首跑结果（T19 后续, run 41839427238 @ e3d5d96, 全绿）**: 经 8 轮迭代修复 3 个 CI 专属问题：
+  ① WebView2 loader 在 runner 上丢弃 `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` → 应用改为经 `ICoreWebView2EnvironmentOptions` 显式传参（产品修复, webview_host.cpp）；
+  ② v0814 官方文档断言机器相关（要求本机存在 java 冲突）→ 改为条件断言 + 文档按钮 `data-eco` 探测器；
+  ③ smoke 异形目录含 CJK 时 node v22 在 Windows 的 fs.cp 静默不建目录 → 改纯 ASCII 目录（保留空格/%/# 三个 URI 关键字符）。
 - **提交**: 34 个提交（`9fc074e`..`f847758`），每任务一个，父链自 `2f1b5cc`。
 - **改动面**: 21 文件 +2477/-265，与计划清单一致，无范围蔓延（`git diff 2f1b5cc --stat` 核对）。
 - **静态复扫**: 15 处 `std::thread` 全部带防护；11 个 shell 命令构造点全部有上游校验；`if (action ==` 49→43（-6，死处理器删除数精确匹配）。
