@@ -17,6 +17,7 @@
 #include <fstream>
 
 static int g_passed = 0;
+static int g_hkcuBaseline = -1;   // HKCU value-count guard (incident 2026-11-04)
 static int g_failed = 0;
 
 void test(const std::string& name, bool cond) {
@@ -29,6 +30,21 @@ void test(const std::string& name, bool cond) {
     }
 }
 
+static int hkcuValueCount() {
+    HKEY k = nullptr;
+    int count = 0;
+    if (RegOpenKeyExW(HKEY_CURRENT_USER, L"Environment", 0, KEY_READ, &k) == ERROR_SUCCESS) {
+        wchar_t name[512];
+        DWORD idx = 0;
+        while (true) {
+            DWORD len = 512;
+            if (RegEnumValueW(k, idx, name, &len, nullptr, nullptr, nullptr, nullptr) != ERROR_SUCCESS) break;
+            count++; idx++;
+        }
+        RegCloseKey(k);
+    }
+    return count;
+}
 int main() {
     std::cout << "=============================================================\n";
     std::cout << "  LazyEnv v0.9.0 Comprehensive Unit & Regression Test Suite  \n";
@@ -37,6 +53,8 @@ int main() {
     // -------------------------------------------------------------
     // Test 1: Recipe v2.0 Serialization & Deserialization
     // -------------------------------------------------------------
+    g_hkcuBaseline = hkcuValueCount();   // guard: suite must not change HKCU value count
+
     std::cout << "\n[Test Group 1: Recipe v2.0 Serialization & Deserialization]\n";
     {
         lazyenv::EnvironmentRecipe rec;
@@ -383,11 +401,11 @@ int main() {
         bool restoredOk = !sid.empty() && rb.restoreSnapshot(sid);
         test("restoreSnapshot succeeds", restoredOk);
         DWORD got = 0; DWORD sz = sizeof(got); DWORD typ = 0; bool present = false;
-        if (RegOpenKeyExW(HKEY_CURRENT_USER, L"Environment", 0, KEY_READ, &k) == ERROR_SUCCESS) {
+        if (RegOpenKeyExW(HKEY_CURRENT_USER, L"Environment", 0, KEY_READ | KEY_SET_VALUE, &k) == ERROR_SUCCESS) {
             if (RegQueryValueExW(k, L"LazyEnvTestDword", nullptr, &typ,
                                  reinterpret_cast<BYTE*>(&got), &sz) == ERROR_SUCCESS
                 && typ == REG_DWORD && got == 42) present = true;
-            RegDeleteValueW(k, L"LazyEnvTestDword");
+            RegDeleteValueW(k, L"LazyEnvTestDword");   // needs KEY_SET_VALUE (was silently failing)
             RegCloseKey(k);
         }
         test("DWORD value survives restore", present);
@@ -519,6 +537,12 @@ int main() {
         for (auto& th : ths2) th.join();
         test("Concurrent getWingetExecutable stable", seen.size() == 1);
     }
+    // -------------------------------------------------------------
+    // Test Group 16: Environment preservation guard (incident regression)
+    // -------------------------------------------------------------
+    std::cout << "\n[Test Group 16: Environment preservation guard]\n";
+    test("HKCU environment value count preserved by suite",
+         g_hkcuBaseline >= 0 && hkcuValueCount() == g_hkcuBaseline);
     std::cout << "\n=============================================================\n";
     std::cout << "Test Summary: " << g_passed << " passed, " << g_failed << " failed\n";
     std::cout << "=============================================================\n";

@@ -480,6 +480,11 @@ std::string RollbackManager::createSnapshot(const std::string& description) {
     bool truncU = false, truncS = false;
     snap.user_env    = captureRegistryKey(false, &truncU);
     snap.system_env  = captureRegistryKey(true,  &truncS);
+    // A capture that yielded zero user values means the read FAILED (key open
+    // error), not that the machine has no environment; persisting it would let
+    // PATH operations rebuild from an empty base and blank the real PATH.
+    if (snap.user_env.empty())
+        return "";
     // Refuse to persist a knowingly-incomplete snapshot: restoring a truncated
     // snapshot would delete variables that were never captured (data loss).
     if (truncU || truncS)
@@ -520,6 +525,19 @@ bool RollbackManager::restoreSnapshot(const std::string& snapshotId) {
     // An empty user_env snapshot would wipe the whole user environment on
     // restore; refuse it as corrupt instead of destroying data.
     if (snap.user_env.empty()) return false;
+    // Sanity guard: a snapshot whose user_env does not even carry "Path"
+    // cannot be a real user-environment capture. Restoring it would delete
+    // every current string value that is not in the (polluted) set.
+    {
+        bool snapHasPath = false;
+        for (const auto& e : snap.user_env) {
+            std::string n = e.name;
+            for (auto& c : n) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+            if (n == "path") { snapHasPath = true; break; }
+        }
+        if (!snapHasPath && !readEnvVariable("Path", false).empty())
+            return false;
+    }
 
     // Restore user environment
     if (!restoreRegistryKey(snap.user_env, false))

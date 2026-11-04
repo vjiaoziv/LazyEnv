@@ -290,6 +290,10 @@ AutoCleanResult PathDoctor::autoClean(bool cleanUser, bool cleanSystem, Rollback
         }
     }
 
+    // Safety: cleaning must never blank a non-empty PATH scope.
+    if (newSysPath.empty()   && !sysRaw.empty())   { newSysPath   = sysRaw;   }
+    if (newUserPath.empty()  && !userRaw.empty())  { newUserPath  = userRaw;  }
+
     bool sysChanged  = (newSysPath != sysRaw);
     bool userChanged = (newUserPath != userRaw);
 
@@ -419,6 +423,10 @@ bool PathDoctor::switchActiveVersion(
 
     // 1. Move target directory to the very front of User PATH
     std::string raw = RollbackManager::readEnvVariable("Path", false);
+    if (raw.empty()) {
+        outSnapshotId = "";
+        return false;   // never rebuild PATH from an empty base
+    }
     auto tokens = splitPath(raw);
     std::string normTarget = normalizePath(expandPath(dir));
 
@@ -495,6 +503,10 @@ bool PathDoctor::reorderPath(
     }
 
     std::string raw = RollbackManager::readEnvVariable("Path", isSystem);
+    if (raw.empty()) {
+        outSnapshotId = "";
+        return false;   // never rebuild PATH from an empty base
+    }
     auto tokens = splitPath(raw);
     std::string normTarget = normalizePath(expandPath(dir));
 
@@ -552,6 +564,13 @@ bool PathDoctor::addPath(
     }
 
     std::string raw = RollbackManager::readEnvVariable("Path", isSystem);
+    if (raw.empty()) {
+        // Never rebuild PATH from an empty base: if the registry read failed
+        // (or PATH was blanked), appending a single entry here turns a
+        // transient failure into permanent data loss downstream.
+        outSnapshotId = "";
+        return false;
+    }
     auto tokens = splitPath(raw);
     std::string normTarget = normalizePath(expandPath(dir));
 
@@ -625,6 +644,11 @@ bool PathDoctor::removePath(
         }
     }
 
+    if (newPath.empty()) {
+        // Removing the final entry would blank PATH entirely; refuse.
+        outSnapshotId = "";
+        return false;
+    }
     bool ok = RollbackManager::writeEnvVariable("Path", newPath, REG_EXPAND_SZ, isSystem);
     if (ok) {
         RollbackManager::broadcastEnvironmentChange();
