@@ -198,7 +198,12 @@ int main() {
         fs::path mockBackupDir = tempBase / "snapshots" / "snap_test" / "configs";
         fs::create_directories(mockBackupDir, ec);
 
-        fs::path targetFile = tempBase / "mock_app.ini";
+        // Target through a whitelisted macro (%USERPROFILE%); absolute
+        // targetDirMacro paths are intentionally rejected since F3.
+        wchar_t upBuf[1024] = {0};
+        GetEnvironmentVariableW(L"USERPROFILE", upBuf, 1024);
+        fs::path targetFile = fs::path(upBuf) / ".lazyenv_test_migration.ini";
+        fs::remove(targetFile, ec);   // non-throwing overload
         {
             std::ofstream ofs(targetFile);
             ofs << "original_secret_data=123\n";
@@ -208,7 +213,7 @@ int main() {
         cfg.category = "pip";
         cfg.name = "Mock App INI";
         cfg.relativePath = targetFile.filename().string();
-        cfg.targetDirMacro = tempBase.string(); // Using physical directory for test target
+        cfg.targetDirMacro = "%USERPROFILE%";
         cfg.content = "new_restored_data=456\n";
 
         std::vector<lazyenv::RecipeConfigFile> cfgs = { cfg };
@@ -219,6 +224,7 @@ int main() {
         std::ifstream ifsNew(targetFile);
         std::string newContent((std::istreambuf_iterator<char>(ifsNew)), std::istreambuf_iterator<char>());
         test("Target file updated with new restored content", newContent.find("new_restored_data=456") != std::string::npos);
+        ifsNew.close();   // must close before deleting the target file
 
         // Verify backup file was preserved in backupDir
         bool foundBackup = false;
@@ -232,6 +238,7 @@ int main() {
         }
         test("Original file was safely archived in backup directory before overwrite", foundBackup);
 
+        fs::remove(targetFile, ec);   // non-throwing overload
         fs::remove_all(tempBase, ec);
     }
 
@@ -394,6 +401,54 @@ int main() {
         bool emptyRestored = rb2.restoreSnapshot(eid);
         test("Empty snapshot restore is refused", !emptyRestored);
         rb2.deleteSnapshot(eid);
+    }
+
+    // -------------------------------------------------------------
+    // Test Group 13: Recipe path security (F3)
+    // -------------------------------------------------------------
+    std::cout << "\n[Test Group 13: Recipe path security]\n";
+    {
+        namespace fs = std::filesystem;
+        // (a) non-whitelisted absolute targetDirMacro must be rejected
+        fs::path evilFile = fs::temp_directory_path() / "lazyenv_zipslip_test.txt";
+        fs::remove(evilFile);
+        lazyenv::RecipeConfigFile evil;
+        evil.category = "test"; evil.name = "evil";
+        evil.relativePath = "lazyenv_zipslip_test.txt";
+        evil.targetDirMacro = fs::temp_directory_path().string();   // absolute path with ':'
+        evil.content = "pwned";
+        std::vector<lazyenv::RecipeConfigFile> bad{ evil };
+        lazyenv::RecipeManager::restoreConfigFiles(bad, "", nullptr);
+        test("Non-whitelisted targetDirMacro is rejected", !fs::exists(evilFile));
+        fs::remove(evilFile);
+
+        // (b) rooted relativePath must be rejected
+        lazyenv::RecipeConfigFile rooted;
+        rooted.category = "test"; rooted.name = "rooted";
+        rooted.relativePath = "\\lazyenv_rooted_test.txt";
+        rooted.targetDirMacro = "%USERPROFILE%";
+        rooted.content = "pwned";
+        std::vector<lazyenv::RecipeConfigFile> bad2{ rooted };
+        std::error_code ec;
+        fs::remove(fs::path("C:/lazyenv_rooted_test.txt"), ec);
+        fs::remove(fs::path("D:/lazyenv_rooted_test.txt"), ec);
+        lazyenv::RecipeManager::restoreConfigFiles(bad2, "", nullptr);
+        test("Rooted relativePath is rejected",
+             !fs::exists("C:/lazyenv_rooted_test.txt") && !fs::exists("D:/lazyenv_rooted_test.txt"));
+
+        // (c) legit %USERPROFILE% config still restores
+        lazyenv::RecipeConfigFile okc;
+        okc.category = "git"; okc.name = "cfg";
+        okc.relativePath = ".lazyenv_sec_ok.txt";
+        okc.targetDirMacro = "%USERPROFILE%";
+        okc.content = "ok";
+        std::vector<lazyenv::RecipeConfigFile> good{ okc };
+        lazyenv::RecipeManager::restoreConfigFiles(good, "", nullptr);
+        wchar_t up[1024] = {0};
+        GetEnvironmentVariableW(L"USERPROFILE", up, 1024);
+        fs::path okPath = fs::path(up) / ".lazyenv_sec_ok.txt";
+        test("Allowed macro still restored", fs::exists(okPath));
+        fs::remove(okPath);
     }
     std::cout << "\n=============================================================\n";
     std::cout << "Test Summary: " << g_passed << " passed, " << g_failed << " failed\n";

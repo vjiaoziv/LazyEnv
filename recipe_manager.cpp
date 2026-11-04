@@ -1386,14 +1386,26 @@ bool RecipeManager::restoreConfigFiles(
         }
 
 
+        // Security check: targetDirMacro must be one of the two known roots.
+        // Anything else (absolute path, drive path, UNC) would let a crafted
+        // recipe write files anywhere on disk.
+        if (c.targetDirMacro != "%USERPROFILE%" && c.targetDirMacro != "%APPDATA%") {
+            if (onLog) onLog("[LazyEnv] Security: skipped non-whitelisted targetDirMacro: " + c.targetDirMacro);
+            continue;
+        }
+        // Security check: relativePath must not be rooted/UNC (leading slash
+        // escapes baseDir after operator/ resolution even without "..").
+        if (relNorm.starts_with("\\")) {
+            if (onLog) onLog("[LazyEnv] Security: skipped rooted relative path: " + c.relativePath);
+            continue;
+        }
+
         std::filesystem::path baseDir;
 
         if (c.targetDirMacro == "%APPDATA%") {
             baseDir = std::filesystem::path(appData);
-        } else if (c.targetDirMacro == "%USERPROFILE%") {
-            baseDir = std::filesystem::path(userProfile);
         } else {
-            baseDir = std::filesystem::path(utf8ToWide(c.targetDirMacro));
+            baseDir = std::filesystem::path(userProfile);
         }
 
 
