@@ -179,9 +179,47 @@ std::string extractJsonValue(const std::string& json, const std::string& key) {
             switch (json[pos]) {
                 case '\"': result += '\"'; break;
                 case '\\': result += '\\'; break;
+                case '/':  result += '/';  break;
+                case 'b':  result += '\b'; break;
+                case 'f':  result += '\f'; break;
                 case 'n':  result += '\n'; break;
                 case 'r':  result += '\r'; break;
                 case 't':  result += '\t'; break;
+                case 'u': {
+                    // \uXXXX (F21a): decode 4 hex digits to UTF-8 instead of
+                    // appending the literal 'u' followed by the digits.
+                    if (pos + 5 < json.size()) {
+                        unsigned code = 0;
+                        bool okHex = true;
+                        for (int k = 1; k <= 4; ++k) {
+                            char hc = json[pos + 1 + k];
+                            unsigned v;
+                            if (hc >= '0' && hc <= '9')       v = hc - '0';
+                            else if (hc >= 'a' && hc <= 'f')  v = hc - 'a' + 10;
+                            else if (hc >= 'A' && hc <= 'F')  v = hc - 'A' + 10;
+                            else { okHex = false; break; }
+                            code = (code << 4) | v;
+                        }
+                        if (okHex) {
+                            if (code < 0x80) {
+                                result += static_cast<char>(code);
+                            } else if (code < 0x800) {
+                                result += static_cast<char>(0xC0 | (code >> 6));
+                                result += static_cast<char>(0x80 | (code & 0x3F));
+                            } else {
+                                result += static_cast<char>(0xE0 | (code >> 12));
+                                result += static_cast<char>(0x80 | ((code >> 6) & 0x3F));
+                                result += static_cast<char>(0x80 | (code & 0x3F));
+                            }
+                            pos += 4;
+                        } else {
+                            result += 'u';
+                        }
+                    } else {
+                        result += 'u';
+                    }
+                    break;
+                }
                 default:   result += json[pos]; break;
             }
         } else if (json[pos] == '\"') {
