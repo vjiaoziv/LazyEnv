@@ -706,7 +706,8 @@ bool createOutputPipe(PipeHandles& ph) {
 }
 
 bool launchProcess(const std::string& cmdLine, HANDLE hWritePipe,
-                   PROCESS_INFORMATION& pi) {
+                   PROCESS_INFORMATION& pi, HANDLE& hJob) {
+    hJob = nullptr;
     STARTUPINFOW si{};
     si.cb         = sizeof(si);
     si.dwFlags    = STARTF_USESTDHANDLES | STARTF_USESHOWWINDOW;
@@ -743,6 +744,17 @@ bool launchProcess(const std::string& cmdLine, HANDLE hWritePipe,
         &pi
     );
 
+    if (ok) {
+        // Put the child (and everything it spawns) into a job object so a
+        // timeout can terminate the WHOLE tree, not just cmd.exe. If the
+        // process is already in a restricted job, degrade gracefully.
+        hJob = CreateJobObjectW(nullptr, nullptr);
+        if (hJob && !AssignProcessToJobObject(hJob, pi.hProcess)) {
+            CloseHandle(hJob);
+            hJob = nullptr;
+        }
+    }
+
     if (hNul) {
         CloseHandle(hNul);
     }
@@ -762,12 +774,13 @@ int Installer::runCommand(const std::string& cmdLine,
 
     PipeHandles ph;
     PROCESS_INFORMATION pi{};
+    HANDLE hJob = nullptr;
 
     {
         std::lock_guard<std::mutex> lock(s_processMutex);
         if (!createOutputPipe(ph)) return -1;
 
-        if (!launchProcess(cmdLine, ph.hWrite, pi)) {
+        if (!launchProcess(cmdLine, ph.hWrite, pi, hJob)) {
             CloseHandle(ph.hRead);
             CloseHandle(ph.hWrite);
             return -1;
@@ -808,7 +821,8 @@ int Installer::runCommand(const std::string& cmdLine,
         auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now() - startTime).count();
         if (elapsed >= timeoutMs) {
-            TerminateProcess(pi.hProcess, static_cast<UINT>(-1));
+            if (hJob) TerminateJobObject(hJob, static_cast<UINT>(-1));   // whole tree (F23c)
+            else TerminateProcess(pi.hProcess, static_cast<UINT>(-1));
             break;
         }
     }
@@ -820,6 +834,7 @@ int Installer::runCommand(const std::string& cmdLine,
     GetExitCodeProcess(pi.hProcess, &exitCode);
     CloseHandle(pi.hProcess);
     CloseHandle(pi.hThread);
+    if (hJob) CloseHandle(hJob);
 
     return static_cast<int>(exitCode);
 }
@@ -835,12 +850,13 @@ int Installer::runCommandStreaming(const std::string& cmdLine,
 
     PipeHandles ph;
     PROCESS_INFORMATION pi{};
+    HANDLE hJob = nullptr;
 
     {
         std::lock_guard<std::mutex> lock(s_processMutex);
         if (!createOutputPipe(ph)) return -1;
 
-        if (!launchProcess(cmdLine, ph.hWrite, pi)) {
+        if (!launchProcess(cmdLine, ph.hWrite, pi, hJob)) {
             CloseHandle(ph.hRead);
             CloseHandle(ph.hWrite);
             return -1;
@@ -898,7 +914,8 @@ int Installer::runCommandStreaming(const std::string& cmdLine,
         auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now() - startTime).count();
         if (elapsed >= timeoutMs) {
-            TerminateProcess(pi.hProcess, static_cast<UINT>(-1));
+            if (hJob) TerminateJobObject(hJob, static_cast<UINT>(-1));   // whole tree (F23c)
+            else TerminateProcess(pi.hProcess, static_cast<UINT>(-1));
             break;
         }
     }
@@ -917,6 +934,7 @@ int Installer::runCommandStreaming(const std::string& cmdLine,
     GetExitCodeProcess(pi.hProcess, &exitCode);
     CloseHandle(pi.hProcess);
     CloseHandle(pi.hThread);
+    if (hJob) CloseHandle(hJob);
 
     return static_cast<int>(exitCode);
 }

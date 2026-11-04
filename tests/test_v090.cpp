@@ -14,6 +14,7 @@
 #include <set>
 #include <thread>
 #include <filesystem>
+#include <tlhelp32.h>
 #include <fstream>
 
 static int g_passed = 0;
@@ -622,6 +623,37 @@ int main() {
         std::string gitcfg = "[credential]\n\thelper = store\n\tpassword = hunter2\n";
         std::string rg = lazyenv::RecipeManager::redactConfigSecrets(gitcfg);
         test("git password redacted", rg.find("hunter2") == std::string::npos);
+    }
+
+    // -------------------------------------------------------------
+    // Test Group 22: Timeout kills child process tree (F23c)
+    // -------------------------------------------------------------
+    std::cout << "\n[Test Group 22: Timeout kills process tree]\n";
+    {
+        auto countPing = []() {
+            int n = 0;
+            HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+            if (snap != INVALID_HANDLE_VALUE) {
+                PROCESSENTRY32W pe{};
+                pe.dwSize = sizeof(pe);
+                if (Process32FirstW(snap, &pe)) {
+                    do {
+                        std::wstring exe = pe.szExeFile;
+                        for (auto& ch : exe) ch = towlower(ch);
+                        if (exe == L"ping.exe") n++;
+                    } while (Process32NextW(snap, &pe));
+                }
+                CloseHandle(snap);
+            }
+            return n;
+        };
+        int before = countPing();
+        std::string out;
+        // Force the timeout path: ping -t never exits on its own
+        lazyenv::Installer::runCommand("ping -t 127.0.0.1", out, 800);
+        Sleep(600);   // allow the kernel to reap terminated processes
+        int after = countPing();
+        test("Timeout terminates child process tree (no orphan ping)", after <= before);
     }
     std::cout << "\n=============================================================\n";
     std::cout << "Test Summary: " << g_passed << " passed, " << g_failed << " failed\n";
