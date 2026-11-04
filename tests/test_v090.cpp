@@ -583,6 +583,30 @@ int main() {
          !lazyenv::PathDoctor::computeAutoCleanSuccess(true, true, false, true, false, true));
     test("No changes reports success",
          lazyenv::PathDoctor::computeAutoCleanSuccess(true, false, false, true, false, false));
+
+    // -------------------------------------------------------------
+    // Test Group 20: switchActiveVersion idempotency (F14)
+    // -------------------------------------------------------------
+    std::cout << "\n[Test Group 20: switchActiveVersion idempotency]\n";
+    {
+        namespace fs = std::filesystem;
+        fs::path tmp = fs::temp_directory_path() / "lazyenv_switch_test_bin";
+        fs::create_directories(tmp);
+        std::string tmpA = tmp.string();
+        std::string origPath = lazyenv::RollbackManager::readEnvVariable("Path", false);
+        // put the target dir at the FRONT so a switch must be a no-op
+        lazyenv::RollbackManager::writeEnvVariable("Path", tmpA + ";" + origPath,
+                                                    REG_EXPAND_SZ, false);
+        lazyenv::RollbackManager rb;
+        std::string sid;
+        bool ok = lazyenv::PathDoctor::switchActiveVersion("python", tmpA, rb, sid);
+        test("Idempotent switch succeeds", ok);
+        test("Idempotent switch creates no snapshot", sid.empty());
+        // restore original exactly
+        lazyenv::RollbackManager::writeEnvVariable("Path", origPath, REG_EXPAND_SZ, false);
+        lazyenv::RollbackManager::broadcastEnvironmentChange();
+        fs::remove_all(tmp);
+    }
     std::cout << "\n=============================================================\n";
     std::cout << "Test Summary: " << g_passed << " passed, " << g_failed << " failed\n";
     std::cout << "=============================================================\n";

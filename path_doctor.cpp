@@ -419,13 +419,6 @@ bool PathDoctor::switchActiveVersion(
     std::string dir = getDirectoryPart(targetBinPath);
     if (dir.empty()) return false;
 
-    std::string label = toolType.empty() ? "Environment" : toolType;
-    try {
-        outSnapshotId = rollback.createSnapshot("LazyEnv Switch: " + label + " -> " + dir);
-    } catch (...) {
-        outSnapshotId = "";
-    }
-
     // 1. Move target directory to the very front of User PATH
     std::string raw = RollbackManager::readEnvVariable("Path", false);
     if (raw.empty()) {
@@ -449,34 +442,49 @@ bool PathDoctor::switchActiveVersion(
         if (i > 0) newPath += ';';
         newPath += newTokens[i];
     }
+
+    if (newPath == raw) {
+        outSnapshotId = "";   // already active: idempotent, no snapshot (F14)
+        return true;
+    }
+
+    // Snapshot only now that a real change is proven (F14)
+    try {
+        outSnapshotId = rollback.createSnapshot("LazyEnv Switch: " +
+            (toolType.empty() ? std::string("Environment") : toolType) + " -> " + dir);
+    } catch (...) {
+        outSnapshotId = "";
+    }
+
     bool ok = RollbackManager::writeEnvVariable("Path", newPath, REG_EXPAND_SZ, false);
 
-    // 2. Cascading environment variable updates
-    std::string lowTool = toLower(toolType);
-    std::string lowPath = toLower(targetBinPath);
-
-    // Cascading JAVA_HOME for Java
-    if (lowTool == "java" || lowTool == "jdk" || lowPath.find("java.exe") != std::string::npos || lowPath.find("jdk") != std::string::npos) {
-        std::filesystem::path p(utf8ToWide(expandPath(dir)));
-        if (toLower(p.filename().string()) == "bin") {
-            std::string javaHome = wideToUtf8(p.parent_path().wstring());
-            if (!javaHome.empty()) {
-                RollbackManager::writeEnvVariable("JAVA_HOME", javaHome, REG_SZ, false);
-            }
-        }
-    }
-    // Cascading GOROOT for Go
-    else if (lowTool == "go" || lowPath.find("go.exe") != std::string::npos || lowPath.find("go\\bin") != std::string::npos) {
-        std::filesystem::path p(utf8ToWide(expandPath(dir)));
-        if (toLower(p.filename().string()) == "bin") {
-            std::string goRoot = wideToUtf8(p.parent_path().wstring());
-            if (!goRoot.empty()) {
-                RollbackManager::writeEnvVariable("GOROOT", goRoot, REG_SZ, false);
-            }
-        }
-    }
-
     if (ok) {
+        // 2. Cascading environment variable updates (only when PATH write succeeded)
+        std::string lowTool = toLower(toolType);
+        std::string lowPath = toLower(targetBinPath);
+
+        // Cascading JAVA_HOME for Java (exact suffix; old substring 'jdk' also
+        // matched things like C:\jdkbackup\bin)
+        if (lowTool == "java" || lowTool == "jdk" || lowPath.ends_with("java.exe")) {
+            std::filesystem::path p(utf8ToWide(expandPath(dir)));
+            if (toLower(p.filename().string()) == "bin") {
+                std::string javaHome = wideToUtf8(p.parent_path().wstring());
+                if (!javaHome.empty()) {
+                    RollbackManager::writeEnvVariable("JAVA_HOME", javaHome, REG_SZ, false);
+                }
+            }
+        }
+        // Cascading GOROOT for Go (exact suffix)
+        else if (lowTool == "go" || lowPath.ends_with("go.exe") || lowPath.ends_with("go\\bin")) {
+            std::filesystem::path p(utf8ToWide(expandPath(dir)));
+            if (toLower(p.filename().string()) == "bin") {
+                std::string goRoot = wideToUtf8(p.parent_path().wstring());
+                if (!goRoot.empty()) {
+                    RollbackManager::writeEnvVariable("GOROOT", goRoot, REG_SZ, false);
+                }
+            }
+        }
+
         RollbackManager::broadcastEnvironmentChange();
     }
     return ok;
