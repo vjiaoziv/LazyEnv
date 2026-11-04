@@ -46,6 +46,7 @@
 #include <format>
 #include <vector>
 #include <algorithm>
+#include <functional>
 
 // ---------------------------------------------------------------------------
 // Globals
@@ -607,6 +608,23 @@ std::vector<lazyenv::UpgradeTarget> parseUpgradeTargetsFromJson(const std::strin
 } // anonymous namespace
 
 // ---------------------------------------------------------------------------
+// Guarded background task: an exception escaping a detached std::thread calls
+// std::terminate and kills the whole app, so every worker funnels through here.
+// ---------------------------------------------------------------------------
+static void spawnGuarded(const char* tag, std::function<void()> fn) {
+    std::thread([tag, fn = std::move(fn)]() {
+        try {
+            fn();
+        } catch (const std::exception& e) {
+            g_webview.postMessage(std::format(
+                "{{\"action\":\"error\",\"message\":\"{}: {}\"}}", tag, jsonEscape(e.what())));
+        } catch (...) {
+            g_webview.postMessage(std::format(
+                "{{\"action\":\"error\",\"message\":\"{}: unknown error\"}}", tag));
+        }
+    }).detach();
+}
+// ---------------------------------------------------------------------------
 // Message handler
 // ---------------------------------------------------------------------------
 std::string handleWebMessage(const std::string& message) {
@@ -873,7 +891,7 @@ std::string handleWebMessage(const std::string& message) {
         bool incExts = extractJsonBool(message, "includeIdeExtensions", true);
 
         HWND owner = g_mainWindow;
-        std::thread([owner, rName, rDesc, rAuthor, incPkgs, incVars, incCfgs, incExts]() {
+        spawnGuarded("Recipe export", [owner, rName, rDesc, rAuthor, incPkgs, incVars, incCfgs, incExts]() {
             CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
             IFileSaveDialog* pDialog = nullptr;
             HRESULT hr = CoCreateInstance(CLSID_FileSaveDialog, nullptr,
@@ -926,7 +944,7 @@ std::string handleWebMessage(const std::string& message) {
                 pDialog->Release();
             }
             CoUninitialize();
-        }).detach();
+        });
         return "{\"action\":\"exportRecipeStarted\"}";
     }
 
@@ -938,7 +956,7 @@ std::string handleWebMessage(const std::string& message) {
         auto envList = parseEnvironmentsFromJson(message);
 
         HWND owner = g_mainWindow;
-        std::thread([owner, rName, rDesc, rAuthor, envList]() {
+        spawnGuarded("Recipe export", [owner, rName, rDesc, rAuthor, envList]() {
             CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
             IFileSaveDialog* pDialog = nullptr;
             HRESULT hr = CoCreateInstance(CLSID_FileSaveDialog, nullptr,
@@ -986,14 +1004,14 @@ std::string handleWebMessage(const std::string& message) {
                 pDialog->Release();
             }
             CoUninitialize();
-        }).detach();
+        });
         return "{\"action\":\"exportRecipeStarted\"}";
     }
 
     // ------ Recipes: Import and analyze .lazyenv recipe file ------
     if (action == "importRecipeDialog") {
         HWND owner = g_mainWindow;
-        std::thread([owner]() {
+        spawnGuarded("Recipe import", [owner]() {
             CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
             IFileOpenDialog* pDialog = nullptr;
             HRESULT hr = CoCreateInstance(CLSID_FileOpenDialog, nullptr,
@@ -1072,7 +1090,7 @@ std::string handleWebMessage(const std::string& message) {
                 pDialog->Release();
             }
             CoUninitialize();
-        }).detach();
+        });
         return "{\"action\":\"importRecipeStarted\"}";
     }
 
@@ -1313,7 +1331,7 @@ std::string handleWebMessage(const std::string& message) {
     if (action == "exportDoctorReportDialog") {
         std::string reportContent = extractJsonValue(message, "content");
         HWND owner = g_mainWindow;
-        std::thread([owner, reportContent]() {
+        spawnGuarded("Doctor report export", [owner, reportContent]() {
             CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
             IFileSaveDialog* pDialog = nullptr;
             if (SUCCEEDED(CoCreateInstance(CLSID_FileSaveDialog, nullptr, CLSCTX_INPROC_SERVER,
@@ -1348,7 +1366,7 @@ std::string handleWebMessage(const std::string& message) {
                 pDialog->Release();
             }
             CoUninitialize();
-        }).detach();
+        });
         return "{\"action\":\"exportDoctorReportStarted\"}";
     }
 
@@ -1639,7 +1657,7 @@ std::string handleWebMessage(const std::string& message) {
         auto catalog = lazyenv::getDefaultCatalog();
         std::string snapId = g_rollback.createSnapshot("Pre-install snapshot");
 
-        std::thread([ids, catalog, snapId]() {
+        spawnGuarded("Package install", [ids, catalog, snapId]() {
             int total = static_cast<int>(ids.size());
             int current = 0;
 
@@ -1730,7 +1748,7 @@ std::string handleWebMessage(const std::string& message) {
                     jsonEscape(snapId));
                 g_webview.postMessage(m);
             }
-        }).detach();
+        });
 
         return std::format("{{\"action\":\"installStarted\",\"snapshotId\":\"{}\"}}", jsonEscape(snapId));
     }
@@ -1740,7 +1758,7 @@ std::string handleWebMessage(const std::string& message) {
         std::string id = extractJsonValue(message, "packageId");
         auto catalog = lazyenv::getDefaultCatalog();
 
-        std::thread([id, catalog]() {
+        spawnGuarded("Package retry", [id, catalog]() {
             lazyenv::PackageInfo pkg;
             for (auto& p : catalog) {
                 if (p.id == id) { pkg = p; break; }
@@ -1808,7 +1826,7 @@ std::string handleWebMessage(const std::string& message) {
                     exitCode);
                 g_webview.postMessage(m);
             }
-        }).detach();
+        });
 
         return "{\"action\":\"retryStarted\"}";
     }
@@ -1867,7 +1885,7 @@ std::string handleWebMessage(const std::string& message) {
         // complex; instead we use the COM file dialog directly here since
         // handleWebMessage is called from the UI thread context.
         HWND owner = g_mainWindow;
-        std::thread([id, owner]() {
+        spawnGuarded("Snapshot export", [id, owner]() {
             // Must CoInitialize for file dialog on this thread
             CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
 
@@ -1916,7 +1934,7 @@ std::string handleWebMessage(const std::string& message) {
                 pDialog->Release();
             }
             CoUninitialize();
-        }).detach();
+        });
 
         return "";
     }
@@ -1924,7 +1942,7 @@ std::string handleWebMessage(const std::string& message) {
     // ------ Import snapshot from file ------
     if (action == "importSnapshot") {
         HWND owner = g_mainWindow;
-        std::thread([owner]() {
+        spawnGuarded("Snapshot import", [owner]() {
             CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
 
             IFileOpenDialog* pDialog = nullptr;
@@ -1967,7 +1985,7 @@ std::string handleWebMessage(const std::string& message) {
                 pDialog->Release();
             }
             CoUninitialize();
-        }).detach();
+        });
 
         return "";
     }
