@@ -44,6 +44,7 @@
 #include <filesystem>
 #include <thread>
 #include <format>
+#include <cstdio>
 #include <vector>
 #include <algorithm>
 #include <functional>
@@ -265,20 +266,33 @@ std::vector<std::string> extractJsonArray(const std::string& json,
     return result;
 }
 
+// Percent-encode a local path for use as a file:// URI. Chromium auto-encodes
+// spaces/Unicode, but '%', '#', and '?' keep special URI semantics and must be
+// encoded explicitly or the page fails to load from such install paths.
+std::wstring encodeFileUri(const std::wstring& absPath) {
+    std::string utf8 = wideToUtf8(absPath);
+    for (auto& ch : utf8) if (ch == '\\') ch = '/';
+    std::wstring out = L"file:///";
+    for (unsigned char b : utf8) {
+        if (b == ' ' || b == '%' || b == '#' || b == '?' || b > 127) {
+            char hex[4];
+            snprintf(hex, sizeof(hex), "%%%02X", b);
+            out += static_cast<wchar_t>(hex[0]);
+            out += static_cast<wchar_t>(hex[1]);
+            out += static_cast<wchar_t>(hex[2]);
+        } else {
+            out += static_cast<wchar_t>(b);
+        }
+    }
+    return out;
+}
+
 std::wstring getHtmlUri() {
     wchar_t exePath[MAX_PATH];
     GetModuleFileNameW(nullptr, exePath, MAX_PATH);
     std::filesystem::path base = std::filesystem::path(exePath).parent_path();
     std::filesystem::path htmlPath = base / "resources" / "index.html";
-
-    // Convert to file:// URI
-    // Windows path: C:\foo\bar -> file:///C:/foo/bar
-    std::wstring wpath = htmlPath.wstring();
-    // Replace backslashes with forward slashes
-    for (auto& ch : wpath) {
-        if (ch == L'\\') ch = L'/';
-    }
-    return L"file:///" + wpath;
+    return encodeFileUri(htmlPath.wstring());
 }
 
 // Detect installed development environments on the system
