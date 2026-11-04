@@ -499,11 +499,13 @@ std::string detectInstalledEnvironments() {
     if (!foundVSCode) {
         std::vector<std::wstring> vsCodePaths;
         wchar_t localApp[MAX_PATH];
-        if (GetEnvironmentVariableW(L"LOCALAPPDATA", localApp, MAX_PATH) > 0) {
+        DWORD _lenLocalApp = GetEnvironmentVariableW(L"LOCALAPPDATA", localApp, MAX_PATH);
+        if (_lenLocalApp > 0 && _lenLocalApp < MAX_PATH) {
             vsCodePaths.push_back(std::wstring(localApp) + L"\\Programs\\Microsoft VS Code\\Code.exe");
         }
         wchar_t progFiles[MAX_PATH];
-        if (GetEnvironmentVariableW(L"ProgramFiles", progFiles, MAX_PATH) > 0) {
+        DWORD _lenProgFiles = GetEnvironmentVariableW(L"ProgramFiles", progFiles, MAX_PATH);
+        if (_lenProgFiles > 0 && _lenProgFiles < MAX_PATH) {
             vsCodePaths.push_back(std::wstring(progFiles) + L"\\Microsoft VS Code\\Code.exe");
         }
         for (const auto& wpath : vsCodePaths) {
@@ -532,7 +534,8 @@ std::string detectInstalledEnvironments() {
 
     if (!found7z) {
         wchar_t progFiles[MAX_PATH];
-        if (GetEnvironmentVariableW(L"ProgramFiles", progFiles, MAX_PATH) > 0) {
+        DWORD _lenProgFiles = GetEnvironmentVariableW(L"ProgramFiles", progFiles, MAX_PATH);
+        if (_lenProgFiles > 0 && _lenProgFiles < MAX_PATH) {
             std::wstring p7z = std::wstring(progFiles) + L"\\7-Zip\\7z.exe";
             DWORD attr = GetFileAttributesW(p7z.c_str());
             if (attr != INVALID_FILE_ATTRIBUTES && !(attr & FILE_ATTRIBUTE_DIRECTORY)) {

@@ -170,7 +170,8 @@ std::string Installer::getWingetExecutable() {
     // Check LOCALAPPDATA WindowsApps safely using Win32 GetFileAttributesW
     // Do NOT use std::filesystem::exists on AppExecutionAlias reparse points.
     wchar_t localAppData[MAX_PATH];
-    if (GetEnvironmentVariableW(L"LOCALAPPDATA", localAppData, MAX_PATH) > 0) {
+    DWORD _lenLocalAppData = GetEnvironmentVariableW(L"LOCALAPPDATA", localAppData, MAX_PATH);
+    if (_lenLocalAppData > 0 && _lenLocalAppData < MAX_PATH) {
         std::wstring winApps = std::wstring(localAppData) + L"\\Microsoft\\WindowsApps\\winget.exe";
         DWORD attr = GetFileAttributesW(winApps.c_str());
         if (attr != INVALID_FILE_ATTRIBUTES && !(attr & FILE_ATTRIBUTE_DIRECTORY)) {

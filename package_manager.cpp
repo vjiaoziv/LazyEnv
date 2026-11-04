@@ -227,7 +227,8 @@ public:
     static std::string getScoopExecutable() {
         if (Installer::isCommandAvailable("scoop")) return "scoop";
         wchar_t userProfile[MAX_PATH];
-        if (GetEnvironmentVariableW(L"USERPROFILE", userProfile, MAX_PATH) > 0) {
+        DWORD _lenUser = GetEnvironmentVariableW(L"USERPROFILE", userProfile, MAX_PATH);
+        if (_lenUser > 0 && _lenUser < MAX_PATH) {
             std::wstring scoopCmd = std::wstring(userProfile) + L"\\scoop\\shims\\scoop.cmd";
             DWORD attr = GetFileAttributesW(scoopCmd.c_str());
             if (attr != INVALID_FILE_ATTRIBUTES && !(attr & FILE_ATTRIBUTE_DIRECTORY)) {
@@ -248,7 +249,8 @@ public:
     bool isAvailable() override {
         if (Installer::isCommandAvailable("scoop")) return true;
         wchar_t userProfile[MAX_PATH];
-        if (GetEnvironmentVariableW(L"USERPROFILE", userProfile, MAX_PATH) > 0) {
+        DWORD _lenUser = GetEnvironmentVariableW(L"USERPROFILE", userProfile, MAX_PATH);
+        if (_lenUser > 0 && _lenUser < MAX_PATH) {
             std::wstring scoopCmd = std::wstring(userProfile) + L"\\scoop\\shims\\scoop.cmd";
             DWORD attr = GetFileAttributesW(scoopCmd.c_str());
             return (attr != INVALID_FILE_ATTRIBUTES && !(attr & FILE_ATTRIBUTE_DIRECTORY));
