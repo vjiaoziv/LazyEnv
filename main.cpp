@@ -1871,9 +1871,15 @@ std::string handleWebMessage(const std::string& message) {
     // ------ Restore snapshot ------
     if (action == "restoreSnapshot") {
         std::string id = extractJsonValue(message, "snapshotId");
-        bool ok = g_rollback.restoreSnapshot(id);
-        return std::format("{{\"action\":\"restoreResult\",\"success\":{},\"snapshotId\":\"{}\"}}",
-                           ok ? "true" : "false", jsonEscape(id));
+        // Registry rewrite + config file copies can take a while; run off the
+        // UI thread (the JS side treats restoreResult as an async event).
+        spawnGuarded("Snapshot restore", [id]() {
+            bool ok = g_rollback.restoreSnapshot(id);
+            g_webview.postMessage(std::format(
+                "{{\"action\":\"restoreResult\",\"success\":{},\"snapshotId\":\"{}\"}}",
+                ok ? "true" : "false", jsonEscape(id)));
+        });
+        return "";
     }
 
     // ------ Delete snapshot ------
