@@ -95,6 +95,10 @@ public:
     // Broadcast WM_SETTINGCHANGE so running processes pick up changes.
     static void broadcastEnvironmentChange();
 
+    // True for environment variables whose deletion breaks Windows
+    // or the user session (F12). Case-insensitive.
+    static bool isCriticalEnvVar(const std::string& name);
+
 private:
     std::filesystem::path storageDir_;
 

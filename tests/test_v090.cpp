@@ -559,6 +559,19 @@ int main() {
              "python.python.3.12", "Python.Python.3.12", "Python 3.12"));
     test("exact name match",
          lazyenv::Installer::wingetEntryMatches("git", "Git", "", "Git.Git", "Git"));
+
+    // -------------------------------------------------------------
+    // Test Group 18: Critical env var protection (F12)
+    // -------------------------------------------------------------
+    std::cout << "\n[Test Group 18: Critical env var protection]\n";
+    test("Critical vars protected",
+         lazyenv::RollbackManager::isCriticalEnvVar("Path") &&
+         lazyenv::RollbackManager::isCriticalEnvVar("PATHEXT") &&
+         lazyenv::RollbackManager::isCriticalEnvVar("TEMP") &&
+         lazyenv::RollbackManager::isCriticalEnvVar("USERPROFILE") &&
+         lazyenv::RollbackManager::isCriticalEnvVar("ProgramFiles(x86)"));
+    test("Ordinary var not protected",
+         !lazyenv::RollbackManager::isCriticalEnvVar("MY_TOOL_HOME"));
     std::cout << "\n=============================================================\n";
     std::cout << "Test Summary: " << g_passed << " passed, " << g_failed << " failed\n";
     std::cout << "=============================================================\n";

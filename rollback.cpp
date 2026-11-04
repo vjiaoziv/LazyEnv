@@ -462,6 +462,23 @@ bool RollbackManager::writeEnvVariable(const std::string& name,
     return rc == ERROR_SUCCESS;
 }
 
+bool RollbackManager::isCriticalEnvVar(const std::string& name) {
+    static const char* kCritical[] = {
+        "path", "pathext", "systemroot", "windir", "comspec", "systemdrive",
+        "userprofile", "homedrive", "homepath", "appdata", "localappdata",
+        "public", "temp", "tmp", "programdata", "programfiles",
+        "programfiles(x86)", "programw6432", "psmodulepath",
+        "username", "userdomain", "os", "number_of_processors",
+        "processor_architecture"
+    };
+    std::string n = name;
+    for (auto& ch : n)
+        ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+    for (auto* c : kCritical) {
+        if (n == c) return true;
+    }
+    return false;
+}
 void RollbackManager::broadcastEnvironmentChange() {
     DWORD_PTR result = 0;
     SendMessageTimeoutW(HWND_BROADCAST, WM_SETTINGCHANGE, 0,

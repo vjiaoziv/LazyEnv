@@ -2139,8 +2139,7 @@ std::string handleWebMessage(const std::string& message) {
         std::string scope = extractJsonValue(message, "scope");
         bool sys = (scope == "system");
 
-        std::string lowName = toLower(name);
-        if (lowName == "path" || lowName == "systemroot" || lowName == "windir" || lowName == "comspec") {
+        if (lazyenv::RollbackManager::isCriticalEnvVar(name)) {
             return std::format("{{{{\"action\":\"envVarDeleteResult\",\"success\":false,\"name\":\"{}\",\"message\":\"Cannot delete critical system environment variable.\"}}}}",
                 jsonEscape(name));
         }
