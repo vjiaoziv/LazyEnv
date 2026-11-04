@@ -143,8 +143,12 @@ PathDoctorReport PathDoctor::diagnose() {
             diag.exists       = directoryExists(diag.expandedPath);
 
             std::string norm = normalizePath(diag.expandedPath);
-            diag.isDuplicate = (seenNormalizedPaths.find(norm) != seenNormalizedPaths.end());
-            seenNormalizedPaths.insert(norm);
+            if (diag.exists) {
+                diag.isDuplicate = (seenNormalizedPaths.find(norm) != seenNormalizedPaths.end());
+                seenNormalizedPaths.insert(norm);
+            } else {
+                diag.isDuplicate = false;   // dead paths do not shadow later valid entries
+            }
 
             if (!diag.exists) {
                 diag.issueDescription = "Dead path: directory does not exist on disk.";
