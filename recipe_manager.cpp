@@ -1017,6 +1017,25 @@ EnvironmentRecipe RecipeManager::createRecipeFromCurrentState(
 
 // ---------------------------------------------------------------------------
 
+std::string RecipeManager::redactConfigSecrets(const std::string& content) {
+    static const char* kSensitive[] = {
+        "_authtoken", "_auth", "password", "passwd", "token", "secret", "credential"
+    };
+    std::istringstream in(content);
+    std::ostringstream out;
+    std::string line;
+    while (std::getline(in, line)) {
+        std::string l = line;
+        for (auto& ch : l)
+            ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+        bool hit = false;
+        for (auto* k : kSensitive) {
+            if (l.find(k) != std::string::npos) { hit = true; break; }
+        }
+        out << (hit ? "# [LazyEnv] redacted sensitive entry" : line) << "\n";
+    }
+    return out.str();
+}
 std::vector<RecipeConfigFile> RecipeManager::discoverCurrentConfigFiles() {
 
     std::vector<RecipeConfigFile> results;
@@ -1037,7 +1056,8 @@ std::vector<RecipeConfigFile> RecipeManager::discoverCurrentConfigFiles() {
 
         if (!content.empty()) {
 
-            results.push_back({ "git", "Git Global Config (.gitconfig)", ".gitconfig", "%USERPROFILE%", content });
+            content = redactConfigSecrets(content);   // F15: strip credentials
+        results.push_back({ "git", "Git Global Config (.gitconfig)", ".gitconfig", "%USERPROFILE%", content });
 
         }
 
@@ -1055,7 +1075,8 @@ std::vector<RecipeConfigFile> RecipeManager::discoverCurrentConfigFiles() {
 
         if (!content.empty()) {
 
-            results.push_back({ "npm", "NPM Global Config (.npmrc)", ".npmrc", "%USERPROFILE%", content });
+            content = redactConfigSecrets(content);   // F15: strip auth tokens
+        results.push_back({ "npm", "NPM Global Config (.npmrc)", ".npmrc", "%USERPROFILE%", content });
 
         }
 

@@ -607,6 +607,22 @@ int main() {
         lazyenv::RollbackManager::broadcastEnvironmentChange();
         fs::remove_all(tmp);
     }
+
+    // -------------------------------------------------------------
+    // Test Group 21: Config secret redaction (F15)
+    // -------------------------------------------------------------
+    std::cout << "\n[Test Group 21: Config secret redaction]\n";
+    {
+        std::string npmrc = "//registry.npmjs.org/:_authToken=npm_SECRET123\n"
+                            "registry=https://registry.npmjs.org/\n";
+        std::string red = lazyenv::RecipeManager::redactConfigSecrets(npmrc);
+        test("npm token redacted", red.find("npm_SECRET123") == std::string::npos);
+        test("npm registry line kept",
+             red.find("registry=https://registry.npmjs.org/") != std::string::npos);
+        std::string gitcfg = "[credential]\n\thelper = store\n\tpassword = hunter2\n";
+        std::string rg = lazyenv::RecipeManager::redactConfigSecrets(gitcfg);
+        test("git password redacted", rg.find("hunter2") == std::string::npos);
+    }
     std::cout << "\n=============================================================\n";
     std::cout << "Test Summary: " << g_passed << " passed, " << g_failed << " failed\n";
     std::cout << "=============================================================\n";
