@@ -47,6 +47,7 @@
 #include <vector>
 #include <algorithm>
 #include <functional>
+#include <mutex>
 
 // ---------------------------------------------------------------------------
 // Globals
@@ -64,6 +65,7 @@ static lazyenv::UpdateManager  g_updateManager(g_rollback);
 static HWND                     g_mainWindow = nullptr;
 static bool                     g_isMaximized = false;
 static lazyenv::EnvironmentRecipe g_lastImportedRecipe;
+static std::mutex g_recipeMutex;   // guards g_lastImportedRecipe across import/deploy threads
 
 // ---------------------------------------------------------------------------
 // JSON helpers
@@ -1040,7 +1042,7 @@ std::string handleWebMessage(const std::string& message) {
                             lazyenv::EnvironmentRecipe recipe;
                             bool ok = lazyenv::RecipeManager::loadRecipeFromFile(srcPath, recipe);
                             if (ok) {
-                                g_lastImportedRecipe = recipe;
+{ std::lock_guard<std::mutex> lk(g_recipeMutex); g_lastImportedRecipe = recipe; }
                                 auto curEnvsStr = detectInstalledEnvironments();
                                 auto curEnvs = parseEnvironmentsFromJson("{\"environments\":" + curEnvsStr + "}");
                                 auto diff = lazyenv::RecipeManager::analyzeRecipeDiff(recipe, curEnvs);
@@ -1128,10 +1130,15 @@ std::string handleWebMessage(const std::string& message) {
                     diff.configsToApply.clear();
                     diff.extensionsToApply.clear();
                 } else {
-                    diff.configsToApply = g_lastImportedRecipe.configFiles;
-                    diff.extensionsToApply = g_lastImportedRecipe.ideExtensions;
-                    diff.varsToApply = g_lastImportedRecipe.environmentVariables;
-                    diff.pathsToApply = g_lastImportedRecipe.paths;
+                    lazyenv::EnvironmentRecipe baseRecipe;
+                    {
+                        std::lock_guard<std::mutex> lk(g_recipeMutex);
+                        baseRecipe = g_lastImportedRecipe;
+                    }
+                    diff.configsToApply = baseRecipe.configFiles;
+                    diff.extensionsToApply = baseRecipe.ideExtensions;
+                    diff.varsToApply = baseRecipe.environmentVariables;
+                    diff.pathsToApply = baseRecipe.paths;
                 }
 
                 std::string snapId;
