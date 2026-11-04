@@ -73,6 +73,11 @@ public:
     // Auto-clean dead & duplicate entries with pre-clean snapshot protection and graceful UAC elevation fallback
     static AutoCleanResult autoClean(bool cleanUser, bool cleanSystem, RollbackManager& rollback);
 
+    // Overall success only depends on scopes that were actually
+    // requested AND had changes to apply (F13).
+    static bool computeAutoCleanSuccess(bool cleanUser, bool userChanged, bool userCleaned,
+                                        bool cleanSystem, bool sysChanged, bool sysCleaned);
+
     // Prioritize a path/directory to the front of User PATH
     static bool prioritizePath(const std::string& targetPath, RollbackManager& rollback, std::string& outSnapshotId);
 

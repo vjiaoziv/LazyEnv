@@ -143,8 +143,12 @@ PathDoctorReport PathDoctor::diagnose() {
             diag.exists       = directoryExists(diag.expandedPath);
 
             std::string norm = normalizePath(diag.expandedPath);
-            diag.isDuplicate = (seenNormalizedPaths.find(norm) != seenNormalizedPaths.end());
-            seenNormalizedPaths.insert(norm);
+            if (diag.exists) {
+                diag.isDuplicate = (seenNormalizedPaths.find(norm) != seenNormalizedPaths.end());
+                seenNormalizedPaths.insert(norm);
+            } else {
+                diag.isDuplicate = false;   // dead paths do not shadow later valid entries
+            }
 
             if (!diag.exists) {
                 diag.issueDescription = "Dead path: directory does not exist on disk.";
@@ -236,6 +240,11 @@ PathDoctorReport PathDoctor::diagnose() {
     return report;
 }
 
+bool PathDoctor::computeAutoCleanSuccess(bool cleanUser, bool userChanged, bool userCleaned,
+                                         bool cleanSystem, bool sysChanged, bool sysCleaned) {
+    return (!cleanUser   || !userChanged   || userCleaned) &&
+           (!cleanSystem || !sysChanged    || sysCleaned);
+}
 AutoCleanResult PathDoctor::autoClean(bool cleanUser, bool cleanSystem, RollbackManager& rollback) {
     AutoCleanResult result;
 
@@ -290,6 +299,10 @@ AutoCleanResult PathDoctor::autoClean(bool cleanUser, bool cleanSystem, Rollback
         }
     }
 
+    // Safety: cleaning must never blank a non-empty PATH scope.
+    if (newSysPath.empty()   && !sysRaw.empty())   { newSysPath   = sysRaw;   }
+    if (newUserPath.empty()  && !userRaw.empty())  { newUserPath  = userRaw;  }
+
     bool sysChanged  = (newSysPath != sysRaw);
     bool userChanged = (newUserPath != userRaw);
 
@@ -336,8 +349,8 @@ AutoCleanResult PathDoctor::autoClean(bool cleanUser, bool cleanSystem, Rollback
         }
     }
 
-    result.success = (userChanged ? result.userCleaned : true) &&
-                     ((cleanSystem && sysChanged) ? result.systemCleaned : true);
+    result.success = computeAutoCleanSuccess(cleanUser, userChanged, result.userCleaned,
+                                             cleanSystem, sysChanged, result.systemCleaned);
 
     if (result.userCleaned || result.systemCleaned) {
         RollbackManager::broadcastEnvironmentChange();
@@ -410,15 +423,12 @@ bool PathDoctor::switchActiveVersion(
     std::string dir = getDirectoryPart(targetBinPath);
     if (dir.empty()) return false;
 
-    std::string label = toolType.empty() ? "Environment" : toolType;
-    try {
-        outSnapshotId = rollback.createSnapshot("LazyEnv Switch: " + label + " -> " + dir);
-    } catch (...) {
-        outSnapshotId = "";
-    }
-
     // 1. Move target directory to the very front of User PATH
     std::string raw = RollbackManager::readEnvVariable("Path", false);
+    if (raw.empty()) {
+        outSnapshotId = "";
+        return false;   // never rebuild PATH from an empty base
+    }
     auto tokens = splitPath(raw);
     std::string normTarget = normalizePath(expandPath(dir));
 
@@ -436,34 +446,49 @@ bool PathDoctor::switchActiveVersion(
         if (i > 0) newPath += ';';
         newPath += newTokens[i];
     }
+
+    if (newPath == raw) {
+        outSnapshotId = "";   // already active: idempotent, no snapshot (F14)
+        return true;
+    }
+
+    // Snapshot only now that a real change is proven (F14)
+    try {
+        outSnapshotId = rollback.createSnapshot("LazyEnv Switch: " +
+            (toolType.empty() ? std::string("Environment") : toolType) + " -> " + dir);
+    } catch (...) {
+        outSnapshotId = "";
+    }
+
     bool ok = RollbackManager::writeEnvVariable("Path", newPath, REG_EXPAND_SZ, false);
 
-    // 2. Cascading environment variable updates
-    std::string lowTool = toLower(toolType);
-    std::string lowPath = toLower(targetBinPath);
-
-    // Cascading JAVA_HOME for Java
-    if (lowTool == "java" || lowTool == "jdk" || lowPath.find("java.exe") != std::string::npos || lowPath.find("jdk") != std::string::npos) {
-        std::filesystem::path p(utf8ToWide(expandPath(dir)));
-        if (toLower(p.filename().string()) == "bin") {
-            std::string javaHome = wideToUtf8(p.parent_path().wstring());
-            if (!javaHome.empty()) {
-                RollbackManager::writeEnvVariable("JAVA_HOME", javaHome, REG_SZ, false);
-            }
-        }
-    }
-    // Cascading GOROOT for Go
-    else if (lowTool == "go" || lowPath.find("go.exe") != std::string::npos || lowPath.find("go\\bin") != std::string::npos) {
-        std::filesystem::path p(utf8ToWide(expandPath(dir)));
-        if (toLower(p.filename().string()) == "bin") {
-            std::string goRoot = wideToUtf8(p.parent_path().wstring());
-            if (!goRoot.empty()) {
-                RollbackManager::writeEnvVariable("GOROOT", goRoot, REG_SZ, false);
-            }
-        }
-    }
-
     if (ok) {
+        // 2. Cascading environment variable updates (only when PATH write succeeded)
+        std::string lowTool = toLower(toolType);
+        std::string lowPath = toLower(targetBinPath);
+
+        // Cascading JAVA_HOME for Java (exact suffix; old substring 'jdk' also
+        // matched things like C:\jdkbackup\bin)
+        if (lowTool == "java" || lowTool == "jdk" || lowPath.ends_with("java.exe")) {
+            std::filesystem::path p(utf8ToWide(expandPath(dir)));
+            if (toLower(p.filename().string()) == "bin") {
+                std::string javaHome = wideToUtf8(p.parent_path().wstring());
+                if (!javaHome.empty()) {
+                    RollbackManager::writeEnvVariable("JAVA_HOME", javaHome, REG_SZ, false);
+                }
+            }
+        }
+        // Cascading GOROOT for Go (exact suffix)
+        else if (lowTool == "go" || lowPath.ends_with("go.exe") || lowPath.ends_with("go\\bin")) {
+            std::filesystem::path p(utf8ToWide(expandPath(dir)));
+            if (toLower(p.filename().string()) == "bin") {
+                std::string goRoot = wideToUtf8(p.parent_path().wstring());
+                if (!goRoot.empty()) {
+                    RollbackManager::writeEnvVariable("GOROOT", goRoot, REG_SZ, false);
+                }
+            }
+        }
+
         RollbackManager::broadcastEnvironmentChange();
     }
     return ok;
@@ -495,6 +520,10 @@ bool PathDoctor::reorderPath(
     }
 
     std::string raw = RollbackManager::readEnvVariable("Path", isSystem);
+    if (raw.empty()) {
+        outSnapshotId = "";
+        return false;   // never rebuild PATH from an empty base
+    }
     auto tokens = splitPath(raw);
     std::string normTarget = normalizePath(expandPath(dir));
 
@@ -552,6 +581,13 @@ bool PathDoctor::addPath(
     }
 
     std::string raw = RollbackManager::readEnvVariable("Path", isSystem);
+    if (raw.empty()) {
+        // Never rebuild PATH from an empty base: if the registry read failed
+        // (or PATH was blanked), appending a single entry here turns a
+        // transient failure into permanent data loss downstream.
+        outSnapshotId = "";
+        return false;
+    }
     auto tokens = splitPath(raw);
     std::string normTarget = normalizePath(expandPath(dir));
 
@@ -625,6 +661,11 @@ bool PathDoctor::removePath(
         }
     }
 
+    if (newPath.empty()) {
+        // Removing the final entry would blank PATH entirely; refuse.
+        outSnapshotId = "";
+        return false;
+    }
     bool ok = RollbackManager::writeEnvVariable("Path", newPath, REG_EXPAND_SZ, isSystem);
     if (ok) {
         RollbackManager::broadcastEnvironmentChange();

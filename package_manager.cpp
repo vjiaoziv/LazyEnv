@@ -180,11 +180,16 @@ public:
     InstallResult upgrade(const std::string& packageId, LineCallback onOutput, PhaseProgressCallback onPhase, bool interactive) override {
         InstallResult result;
         result.packageId = packageId;
+        if (!Installer::isSafePackageId(packageId)) {
+            result.status   = InstallStatus::Failed;
+            result.exitCode = -1;
+            result.output   = "Unsafe package id";
+            return result;
+        }
 
         if (onPhase) {
             UpgradeProgressDetail initD;
-            initD.phase = "preparing";
-            initD.percent = 0;
+            initD.phase = "preparing";            initD.percent = 0;
             initD.message = "Preparing WinGet installation for " + packageId + "...";
             onPhase(initD);
         }
@@ -222,7 +227,8 @@ public:
     static std::string getScoopExecutable() {
         if (Installer::isCommandAvailable("scoop")) return "scoop";
         wchar_t userProfile[MAX_PATH];
-        if (GetEnvironmentVariableW(L"USERPROFILE", userProfile, MAX_PATH) > 0) {
+        DWORD _lenUser = GetEnvironmentVariableW(L"USERPROFILE", userProfile, MAX_PATH);
+        if (_lenUser > 0 && _lenUser < MAX_PATH) {
             std::wstring scoopCmd = std::wstring(userProfile) + L"\\scoop\\shims\\scoop.cmd";
             DWORD attr = GetFileAttributesW(scoopCmd.c_str());
             if (attr != INVALID_FILE_ATTRIBUTES && !(attr & FILE_ATTRIBUTE_DIRECTORY)) {
@@ -243,7 +249,8 @@ public:
     bool isAvailable() override {
         if (Installer::isCommandAvailable("scoop")) return true;
         wchar_t userProfile[MAX_PATH];
-        if (GetEnvironmentVariableW(L"USERPROFILE", userProfile, MAX_PATH) > 0) {
+        DWORD _lenUser = GetEnvironmentVariableW(L"USERPROFILE", userProfile, MAX_PATH);
+        if (_lenUser > 0 && _lenUser < MAX_PATH) {
             std::wstring scoopCmd = std::wstring(userProfile) + L"\\scoop\\shims\\scoop.cmd";
             DWORD attr = GetFileAttributesW(scoopCmd.c_str());
             return (attr != INVALID_FILE_ATTRIBUTES && !(attr & FILE_ATTRIBUTE_DIRECTORY));
@@ -296,11 +303,16 @@ public:
     InstallResult upgrade(const std::string& packageId, LineCallback onOutput, PhaseProgressCallback onPhase, [[maybe_unused]] bool interactive) override {
         InstallResult result;
         result.packageId = packageId;
+        if (!Installer::isSafePackageId(packageId)) {
+            result.status   = InstallStatus::Failed;
+            result.exitCode = -1;
+            result.output   = "Unsafe package id";
+            return result;
+        }
 
         if (onPhase) {
             UpgradeProgressDetail initD;
-            initD.phase = "preparing";
-            initD.message = "Preparing Scoop update for " + packageId + "...";
+            initD.phase = "preparing";            initD.message = "Preparing Scoop update for " + packageId + "...";
             onPhase(initD);
         }
 
@@ -400,11 +412,16 @@ public:
     InstallResult upgrade(const std::string& packageId, LineCallback onOutput, PhaseProgressCallback onPhase, [[maybe_unused]] bool interactive) override {
         InstallResult result;
         result.packageId = packageId;
+        if (!Installer::isSafePackageId(packageId)) {
+            result.status   = InstallStatus::Failed;
+            result.exitCode = -1;
+            result.output   = "Unsafe package id";
+            return result;
+        }
 
         if (onPhase) {
             UpgradeProgressDetail initD;
-            initD.phase = "downloading";
-            initD.message = "Installing npm package " + packageId + "@latest...";
+            initD.phase = "downloading";            initD.message = "Installing npm package " + packageId + "@latest...";
             onPhase(initD);
         }
 
@@ -501,11 +518,16 @@ public:
     InstallResult upgrade(const std::string& packageId, LineCallback onOutput, PhaseProgressCallback onPhase, [[maybe_unused]] bool interactive) override {
         InstallResult result;
         result.packageId = packageId;
+        if (!Installer::isSafePackageId(packageId)) {
+            result.status   = InstallStatus::Failed;
+            result.exitCode = -1;
+            result.output   = "Unsafe package id";
+            return result;
+        }
 
         if (onPhase) {
             UpgradeProgressDetail initD;
-            initD.phase = "downloading";
-            initD.message = "Upgrading pip package " + packageId + "...";
+            initD.phase = "downloading";            initD.message = "Upgrading pip package " + packageId + "...";
             onPhase(initD);
         }
 

@@ -1,16 +1,23 @@
-import { spawn } from 'node:child_process';
+import { spawn, execSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
+const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 
 const PORT = 9257;
-const exePath = "D:\\Git\\LazyEnv\\build\\Release\\LazyEnv.exe";
+const exePath = join(ROOT, 'build', 'Release', 'LazyEnv.exe');
 console.log("=== Launching LazyEnv for v0.9.0 Comprehensive Migration Hub CDP E2E Testing ===");
 
+console.log('[diag] args-env=' + (process.env.WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS || '<unset>'));
 const proc = spawn(exePath, [], {
   env: {
     ...process.env,
     WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${PORT}`
   },
-  stdio: 'ignore'
+  stdio: ['ignore', 'pipe', 'pipe']
 });
+let appOutput = '';
+proc.stdout?.on('data', d => { appOutput += d; });
+proc.stderr?.on('data', d => { appOutput += d; });
 
 async function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
@@ -29,7 +36,8 @@ async function run() {
 
   try {
     let wsUrl = null;
-    for (let i = 0; i < 25; i++) {
+    for (let i = 0; i < 75; i++) {
+      if (proc.exitCode !== null) break;
       await sleep(400);
       try {
         const res = await fetch(`http://127.0.0.1:${PORT}/json/list`);
@@ -44,7 +52,13 @@ async function run() {
       } catch (e) {}
     }
 
-    if (!wsUrl) throw new Error("Could not find WebView2 CDP endpoint");
+    if (!wsUrl) {
+      const state = proc.exitCode === null ? 'app still running (slow start?)' : `app exited code=${proc.exitCode}`;
+      const tail = appOutput ? ` | app output: ${appOutput.slice(-600)}` : '';
+      let wv = '<n/a>'; try { wv = execSync('tasklist /FI "IMAGENAME eq msedgewebview2.exe" /NH', { encoding: 'utf8' }).trim().replace(/\r?\n/g, ' | '); } catch {}
+      try { wv += ' || cmd: ' + execSync('powershell -NoProfile -File tests/dump-webview2.ps1', { encoding: 'utf8' }).trim().replace(/\r?\n/g, ' ~~ ' ).slice(0, 2000); } catch (e) { wv += ' || cmd-err: ' + e.message; }
+      throw new Error(`Could not find WebView2 CDP endpoint (${state})${tail} | webview2: ${wv}`);
+    }
 
     const ws = new WebSocket(wsUrl);
     await new Promise(r => ws.onopen = r);

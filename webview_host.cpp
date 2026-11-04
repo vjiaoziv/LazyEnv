@@ -31,6 +31,7 @@
 
 #include <filesystem>
 #include <string>
+#include <cstdio>
 
 namespace {
 
@@ -56,7 +57,7 @@ std::string wideToUtf8(const std::wstring& ws) {
     return s;
 }
 
-} // anonymous namespace
+std::string jsonEscape(const std::string& s) {    std::string out;    out.reserve(s.size() + 16);    for (char c : s) {        switch (c) {            case '\"': out += "\\\""; break;            case '\\': out += "\\\\"; break;            case '\n': out += "\\n";  break;            case '\r': out += "\\r";  break;            case '\t': out += "\\t";  break;            default:                if (static_cast<unsigned char>(c) < 0x20) {                    char buf[8];                    snprintf(buf, sizeof(buf), "\\u%04x", static_cast<unsigned char>(c));                    out += buf;                } else {                    out += c;                }                break;        }    }    return out;}} // anonymous namespace
 
 namespace lazyenv {
 
@@ -91,10 +92,23 @@ bool WebViewHost::initialize(HWND parentWindow, const std::wstring& navigateUri)
         CoTaskMemFree(appdata);
     }
 
+    // Explicitly forward WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS through
+    // ICoreWebView2EnvironmentOptions. Relying only on the loader's implicit
+    // env-var handling proved unreliable on some hosts (the CDP debug port
+    // flag was silently dropped); passing it here is deterministic.
+    Microsoft::WRL::ComPtr<CoreWebView2EnvironmentOptions> envOptions;
+    wchar_t extraArgs[2048] = L"";
+    DWORD extraLen = GetEnvironmentVariableW(
+        L"WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", extraArgs, 2048);
+    if (extraLen > 0 && extraLen < 2048) {
+        envOptions = Microsoft::WRL::Make<CoreWebView2EnvironmentOptions>();
+        envOptions->put_AdditionalBrowserArguments(extraArgs);
+    }
+
     HRESULT hr = CreateCoreWebView2EnvironmentWithOptions(
         nullptr,
         userDataFolder.c_str(),
-        nullptr,
+        envOptions.Get(),
         Microsoft::WRL::Callback<ICoreWebView2CreateCoreWebView2EnvironmentCompletedHandler>(
             [this](HRESULT result, ICoreWebView2Environment* env) -> HRESULT {
                 if (FAILED(result) || !env) return result;
@@ -174,7 +188,7 @@ void WebViewHost::setupMessageBridge() {
                             }
                         } catch (const std::exception& e) {
                             try {
-                                std::string errJson = std::string("{\"action\":\"error\",\"message\":\"") + e.what() + "\"}";
+                                std::string errJson = std::string("{\"action\":\"error\",\"message\":\"") + jsonEscape(e.what()) + "\"}";
                                 std::wstring werr = utf8ToWide(errJson);
                                 webview_->PostWebMessageAsString(werr.c_str());
                             } catch (...) {}

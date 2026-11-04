@@ -44,8 +44,11 @@
 #include <filesystem>
 #include <thread>
 #include <format>
+#include <cstdio>
 #include <vector>
 #include <algorithm>
+#include <functional>
+#include <mutex>
 
 // ---------------------------------------------------------------------------
 // Globals
@@ -63,6 +66,7 @@ static lazyenv::UpdateManager  g_updateManager(g_rollback);
 static HWND                     g_mainWindow = nullptr;
 static bool                     g_isMaximized = false;
 static lazyenv::EnvironmentRecipe g_lastImportedRecipe;
+static std::mutex g_recipeMutex;   // guards g_lastImportedRecipe across import/deploy threads
 
 // ---------------------------------------------------------------------------
 // JSON helpers
@@ -175,9 +179,47 @@ std::string extractJsonValue(const std::string& json, const std::string& key) {
             switch (json[pos]) {
                 case '\"': result += '\"'; break;
                 case '\\': result += '\\'; break;
+                case '/':  result += '/';  break;
+                case 'b':  result += '\b'; break;
+                case 'f':  result += '\f'; break;
                 case 'n':  result += '\n'; break;
                 case 'r':  result += '\r'; break;
                 case 't':  result += '\t'; break;
+                case 'u': {
+                    // \uXXXX (F21a): decode 4 hex digits to UTF-8 instead of
+                    // appending the literal 'u' followed by the digits.
+                    if (pos + 5 < json.size()) {
+                        unsigned code = 0;
+                        bool okHex = true;
+                        for (int k = 1; k <= 4; ++k) {
+                            char hc = json[pos + 1 + k];
+                            unsigned v;
+                            if (hc >= '0' && hc <= '9')       v = hc - '0';
+                            else if (hc >= 'a' && hc <= 'f')  v = hc - 'a' + 10;
+                            else if (hc >= 'A' && hc <= 'F')  v = hc - 'A' + 10;
+                            else { okHex = false; break; }
+                            code = (code << 4) | v;
+                        }
+                        if (okHex) {
+                            if (code < 0x80) {
+                                result += static_cast<char>(code);
+                            } else if (code < 0x800) {
+                                result += static_cast<char>(0xC0 | (code >> 6));
+                                result += static_cast<char>(0x80 | (code & 0x3F));
+                            } else {
+                                result += static_cast<char>(0xE0 | (code >> 12));
+                                result += static_cast<char>(0x80 | ((code >> 6) & 0x3F));
+                                result += static_cast<char>(0x80 | (code & 0x3F));
+                            }
+                            pos += 4;
+                        } else {
+                            result += 'u';
+                        }
+                    } else {
+                        result += 'u';
+                    }
+                    break;
+                }
                 default:   result += json[pos]; break;
             }
         } else if (json[pos] == '\"') {
@@ -210,6 +252,60 @@ bool extractJsonBool(const std::string& json, const std::string& key, bool defau
     return defaultValue;
 }
 
+
+static size_t findMatchingJsonArrayEnd(const std::string& str, size_t openBracketPos) {
+    if (openBracketPos >= str.size() || str[openBracketPos] != '[') return std::string::npos;
+    bool inStr = false;
+    int depth = 0;
+    for (size_t i = openBracketPos; i < str.size(); ++i) {
+        char c = str[i];
+        if (inStr) {
+            if (c == '\\' && i + 1 < str.size()) {
+                ++i;
+            } else if (c == '\"') {
+                inStr = false;
+            }
+        } else {
+            if (c == '\"') {
+                inStr = true;
+            } else if (c == '[') {
+                depth++;
+            } else if (c == ']') {
+                depth--;
+                if (depth == 0) return i;
+            }
+        }
+    }
+    return std::string::npos;
+}
+
+static size_t findMatchingJsonObjectEnd(const std::string& str, size_t openBracePos) {
+    if (openBracePos >= str.size() || str[openBracePos] != '{') return std::string::npos;
+    bool inStr = false;
+    int depth = 0;
+    for (size_t i = openBracePos; i < str.size(); ++i) {
+        char c = str[i];
+        if (inStr) {
+            if (c == '\\' && i + 1 < str.size()) {
+                ++i;
+            } else if (c == '\"') {
+                inStr = false;
+            }
+        } else {
+            if (c == '\"') {
+                inStr = true;
+            } else if (c == '{') {
+                depth++;
+            } else if (c == '}') {
+                depth--;
+                if (depth == 0) return i;
+            }
+        }
+    }
+    return std::string::npos;
+}
+
+// Parse a JSON array of SnapshotEntry objects.
 
 std::vector<std::string> extractJsonArray(const std::string& json,
                                           const std::string& key) {
@@ -262,20 +358,33 @@ std::vector<std::string> extractJsonArray(const std::string& json,
     return result;
 }
 
+// Percent-encode a local path for use as a file:// URI. Chromium auto-encodes
+// spaces/Unicode, but '%', '#', and '?' keep special URI semantics and must be
+// encoded explicitly or the page fails to load from such install paths.
+std::wstring encodeFileUri(const std::wstring& absPath) {
+    std::string utf8 = wideToUtf8(absPath);
+    for (auto& ch : utf8) if (ch == '\\') ch = '/';
+    std::wstring out = L"file:///";
+    for (unsigned char b : utf8) {
+        if (b == ' ' || b == '%' || b == '#' || b == '?' || b > 127) {
+            char hex[4];
+            snprintf(hex, sizeof(hex), "%%%02X", b);
+            out += static_cast<wchar_t>(hex[0]);
+            out += static_cast<wchar_t>(hex[1]);
+            out += static_cast<wchar_t>(hex[2]);
+        } else {
+            out += static_cast<wchar_t>(b);
+        }
+    }
+    return out;
+}
+
 std::wstring getHtmlUri() {
     wchar_t exePath[MAX_PATH];
     GetModuleFileNameW(nullptr, exePath, MAX_PATH);
     std::filesystem::path base = std::filesystem::path(exePath).parent_path();
     std::filesystem::path htmlPath = base / "resources" / "index.html";
-
-    // Convert to file:// URI
-    // Windows path: C:\foo\bar -> file:///C:/foo/bar
-    std::wstring wpath = htmlPath.wstring();
-    // Replace backslashes with forward slashes
-    for (auto& ch : wpath) {
-        if (ch == L'\\') ch = L'/';
-    }
-    return L"file:///" + wpath;
+    return encodeFileUri(htmlPath.wstring());
 }
 
 // Detect installed development environments on the system
@@ -390,11 +499,13 @@ std::string detectInstalledEnvironments() {
     if (!foundVSCode) {
         std::vector<std::wstring> vsCodePaths;
         wchar_t localApp[MAX_PATH];
-        if (GetEnvironmentVariableW(L"LOCALAPPDATA", localApp, MAX_PATH) > 0) {
+        DWORD _lenLocalApp = GetEnvironmentVariableW(L"LOCALAPPDATA", localApp, MAX_PATH);
+        if (_lenLocalApp > 0 && _lenLocalApp < MAX_PATH) {
             vsCodePaths.push_back(std::wstring(localApp) + L"\\Programs\\Microsoft VS Code\\Code.exe");
         }
         wchar_t progFiles[MAX_PATH];
-        if (GetEnvironmentVariableW(L"ProgramFiles", progFiles, MAX_PATH) > 0) {
+        DWORD _lenProgFiles = GetEnvironmentVariableW(L"ProgramFiles", progFiles, MAX_PATH);
+        if (_lenProgFiles > 0 && _lenProgFiles < MAX_PATH) {
             vsCodePaths.push_back(std::wstring(progFiles) + L"\\Microsoft VS Code\\Code.exe");
         }
         for (const auto& wpath : vsCodePaths) {
@@ -423,7 +534,8 @@ std::string detectInstalledEnvironments() {
 
     if (!found7z) {
         wchar_t progFiles[MAX_PATH];
-        if (GetEnvironmentVariableW(L"ProgramFiles", progFiles, MAX_PATH) > 0) {
+        DWORD _lenProgFiles = GetEnvironmentVariableW(L"ProgramFiles", progFiles, MAX_PATH);
+        if (_lenProgFiles > 0 && _lenProgFiles < MAX_PATH) {
             std::wstring p7z = std::wstring(progFiles) + L"\\7-Zip\\7z.exe";
             DWORD attr = GetFileAttributesW(p7z.c_str());
             if (attr != INVALID_FILE_ATTRIBUTES && !(attr & FILE_ATTRIBUTE_DIRECTORY)) {
@@ -495,14 +607,14 @@ std::vector<lazyenv::DetectedEnvItem> parseEnvironmentsFromJson(const std::strin
     if (envsPos == std::string::npos) return list;
     auto startArr = message.find('[', envsPos);
     if (startArr == std::string::npos) return list;
-    auto endArr = message.rfind(']');
+    auto endArr = findMatchingJsonArrayEnd(message, startArr);
     if (endArr == std::string::npos || endArr <= startArr) return list;
 
     size_t pos = startArr + 1;
     while (pos < endArr) {
         auto objStart = message.find('{', pos);
         if (objStart == std::string::npos || objStart >= endArr) break;
-        auto objEnd = message.find('}', objStart);
+        auto objEnd = findMatchingJsonObjectEnd(message, objStart);
         if (objEnd == std::string::npos || objEnd > endArr) break;
         std::string itemJson = message.substr(objStart, objEnd - objStart + 1);
         lazyenv::DetectedEnvItem item;
@@ -524,14 +636,14 @@ std::vector<lazyenv::RecipePackageItem> parseMissingPackagesFromJson(const std::
     if (pPos == std::string::npos) return items;
     auto startArr = message.find('[', pPos);
     if (startArr == std::string::npos) return items;
-    auto endArr = message.rfind(']');
+    auto endArr = findMatchingJsonArrayEnd(message, startArr);
     if (endArr == std::string::npos || endArr <= startArr) return items;
 
     size_t pos = startArr + 1;
     while (pos < endArr) {
         auto oStart = message.find('{', pos);
         if (oStart == std::string::npos || oStart >= endArr) break;
-        auto oEnd = message.find('}', oStart);
+        auto oEnd = findMatchingJsonObjectEnd(message, oStart);
         if (oEnd == std::string::npos || oEnd > endArr) break;
         std::string itemJson = message.substr(oStart, oEnd - oStart + 1);
         lazyenv::RecipePackageItem itm;
@@ -552,14 +664,14 @@ std::vector<lazyenv::RecipeEnvVar> parseEnvVarsFromJson(const std::string& messa
     if (vPos == std::string::npos) return vars;
     auto startArr = message.find('[', vPos);
     if (startArr == std::string::npos) return vars;
-    auto endArr = message.rfind(']');
+    auto endArr = findMatchingJsonArrayEnd(message, startArr);
     if (endArr == std::string::npos || endArr <= startArr) return vars;
 
     size_t pos = startArr + 1;
     while (pos < endArr) {
         auto oStart = message.find('{', pos);
         if (oStart == std::string::npos || oStart >= endArr) break;
-        auto oEnd = message.find('}', oStart);
+        auto oEnd = findMatchingJsonObjectEnd(message, oStart);
         if (oEnd == std::string::npos || oEnd > endArr) break;
         std::string itemJson = message.substr(oStart, oEnd - oStart + 1);
         lazyenv::RecipeEnvVar v;
@@ -579,14 +691,14 @@ std::vector<lazyenv::UpgradeTarget> parseUpgradeTargetsFromJson(const std::strin
     if (tPos == std::string::npos) return targets;
     auto startArr = message.find('[', tPos);
     if (startArr == std::string::npos) return targets;
-    auto endArr = message.rfind(']');
+    auto endArr = findMatchingJsonArrayEnd(message, startArr);
     if (endArr == std::string::npos || endArr <= startArr) return targets;
 
     size_t pos = startArr + 1;
     while (pos < endArr) {
         auto objStart = message.find('{', pos);
         if (objStart == std::string::npos || objStart >= endArr) break;
-        auto objEnd = message.find('}', objStart);
+        auto objEnd = findMatchingJsonObjectEnd(message, objStart);
         if (objEnd == std::string::npos || objEnd > endArr) break;
         std::string itemJson = message.substr(objStart, objEnd - objStart + 1);
 
@@ -606,6 +718,23 @@ std::vector<lazyenv::UpgradeTarget> parseUpgradeTargetsFromJson(const std::strin
 
 } // anonymous namespace
 
+// ---------------------------------------------------------------------------
+// Guarded background task: an exception escaping a detached std::thread calls
+// std::terminate and kills the whole app, so every worker funnels through here.
+// ---------------------------------------------------------------------------
+static void spawnGuarded(const char* tag, std::function<void()> fn) {
+    std::thread([tag, fn = std::move(fn)]() {
+        try {
+            fn();
+        } catch (const std::exception& e) {
+            g_webview.postMessage(std::format(
+                "{{\"action\":\"error\",\"message\":\"{}: {}\"}}", tag, jsonEscape(e.what())));
+        } catch (...) {
+            g_webview.postMessage(std::format(
+                "{{\"action\":\"error\",\"message\":\"{}: unknown error\"}}", tag));
+        }
+    }).detach();
+}
 // ---------------------------------------------------------------------------
 // Message handler
 // ---------------------------------------------------------------------------
@@ -659,7 +788,12 @@ std::string handleWebMessage(const std::string& message) {
         std::string cmd = extractJsonValue(message, "command");
         std::string cat = extractJsonValue(message, "category");
         if (cat.empty()) cat = "other";
-
+        if (!lazyenv::Installer::isSafeShellToken(cmd)) {
+            return std::format(
+                "{{\"action\":\"probeResult\",\"found\":false,"
+                "\"command\":\"{}\",\"message\":\"Unsafe characters in command.\"}}",
+                jsonEscape(cmd));
+        }
         std::thread([cmd, cat]() {
             try {
                 std::string result = probeCommand(cmd, cat);
@@ -674,7 +808,9 @@ std::string handleWebMessage(const std::string& message) {
         std::string cmdName = extractJsonValue(message, "command");
         std::string displayName = extractJsonValue(message, "name");
         if (displayName.empty()) displayName = cmdName;
-
+        if (!lazyenv::Installer::isSafeShellToken(displayName)) {
+            return "{\"action\":\"uninstallResult\",\"success\":false}";
+        }
         std::thread([cmdName, displayName]() {
             try {
                 std::string wingetId;
@@ -799,30 +935,17 @@ std::string handleWebMessage(const std::string& message) {
 
                 g_webview.postMessage(os.str());
             } catch (...) {
-                g_webview.postMessage("{\"action\":\"upgradeBatchComplete\",\"successCount\":0,\"failCount\":1,\"total\":1,\"failures\":[]}");
+                size_t total = targets.size();
+                g_webview.postMessage(std::format(
+                    "{{\"action\":\"upgradeBatchComplete\",\"successCount\":0,"
+                    "\"failCount\":{},\"total\":{},\"failures\":[]}}",
+                    total, total));
             }
         }).detach();
         return "{\"action\":\"upgradeBatchStarted\"}";
     }
 
-    // ------ Verify Command execution in real-time ------
-    if (action == "verifyCommand") {
-        std::string cmd = extractJsonValue(message, "command");
-        std::thread([cmd]() {
-            try {
-                std::string out;
-                int rc = lazyenv::Installer::runCommand(cmd + " --version 2>&1", out, 5000);
-                std::ostringstream os;
-                os << "{\"action\":\"verifyResult\","
-                   << "\"command\":\"" << jsonEscape(cmd) << "\","
-                   << "\"output\":\"" << jsonEscape(out.substr(0, 300)) << "\","
-                   << "\"success\":" << (rc == 0 ? "true" : "false") << "}";
-                g_webview.postMessage(os.str());
-            } catch (...) {}
-        }).detach();
-        return "{\"action\":\"verifyStarted\"}";
-    }
-
+    
     // ------ Migration Hub: Scan discovered local assets (4-in-1 preview) ------
     if (action == "scanDiscoveredAssets") {
         std::thread([]() {
@@ -866,7 +989,7 @@ std::string handleWebMessage(const std::string& message) {
         bool incExts = extractJsonBool(message, "includeIdeExtensions", true);
 
         HWND owner = g_mainWindow;
-        std::thread([owner, rName, rDesc, rAuthor, incPkgs, incVars, incCfgs, incExts]() {
+        spawnGuarded("Recipe export", [owner, rName, rDesc, rAuthor, incPkgs, incVars, incCfgs, incExts]() {
             CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
             IFileSaveDialog* pDialog = nullptr;
             HRESULT hr = CoCreateInstance(CLSID_FileSaveDialog, nullptr,
@@ -919,7 +1042,7 @@ std::string handleWebMessage(const std::string& message) {
                 pDialog->Release();
             }
             CoUninitialize();
-        }).detach();
+        });
         return "{\"action\":\"exportRecipeStarted\"}";
     }
 
@@ -931,7 +1054,7 @@ std::string handleWebMessage(const std::string& message) {
         auto envList = parseEnvironmentsFromJson(message);
 
         HWND owner = g_mainWindow;
-        std::thread([owner, rName, rDesc, rAuthor, envList]() {
+        spawnGuarded("Recipe export", [owner, rName, rDesc, rAuthor, envList]() {
             CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
             IFileSaveDialog* pDialog = nullptr;
             HRESULT hr = CoCreateInstance(CLSID_FileSaveDialog, nullptr,
@@ -979,14 +1102,14 @@ std::string handleWebMessage(const std::string& message) {
                 pDialog->Release();
             }
             CoUninitialize();
-        }).detach();
+        });
         return "{\"action\":\"exportRecipeStarted\"}";
     }
 
     // ------ Recipes: Import and analyze .lazyenv recipe file ------
     if (action == "importRecipeDialog") {
         HWND owner = g_mainWindow;
-        std::thread([owner]() {
+        spawnGuarded("Recipe import", [owner]() {
             CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
             IFileOpenDialog* pDialog = nullptr;
             HRESULT hr = CoCreateInstance(CLSID_FileOpenDialog, nullptr,
@@ -1015,7 +1138,7 @@ std::string handleWebMessage(const std::string& message) {
                             lazyenv::EnvironmentRecipe recipe;
                             bool ok = lazyenv::RecipeManager::loadRecipeFromFile(srcPath, recipe);
                             if (ok) {
-                                g_lastImportedRecipe = recipe;
+{ std::lock_guard<std::mutex> lk(g_recipeMutex); g_lastImportedRecipe = recipe; }
                                 auto curEnvsStr = detectInstalledEnvironments();
                                 auto curEnvs = parseEnvironmentsFromJson("{\"environments\":" + curEnvsStr + "}");
                                 auto diff = lazyenv::RecipeManager::analyzeRecipeDiff(recipe, curEnvs);
@@ -1065,7 +1188,7 @@ std::string handleWebMessage(const std::string& message) {
                 pDialog->Release();
             }
             CoUninitialize();
-        }).detach();
+        });
         return "{\"action\":\"importRecipeStarted\"}";
     }
 
@@ -1103,10 +1226,15 @@ std::string handleWebMessage(const std::string& message) {
                     diff.configsToApply.clear();
                     diff.extensionsToApply.clear();
                 } else {
-                    diff.configsToApply = g_lastImportedRecipe.configFiles;
-                    diff.extensionsToApply = g_lastImportedRecipe.ideExtensions;
-                    diff.varsToApply = g_lastImportedRecipe.environmentVariables;
-                    diff.pathsToApply = g_lastImportedRecipe.paths;
+                    lazyenv::EnvironmentRecipe baseRecipe;
+                    {
+                        std::lock_guard<std::mutex> lk(g_recipeMutex);
+                        baseRecipe = g_lastImportedRecipe;
+                    }
+                    diff.configsToApply = baseRecipe.configFiles;
+                    diff.extensionsToApply = baseRecipe.ideExtensions;
+                    diff.varsToApply = baseRecipe.environmentVariables;
+                    diff.pathsToApply = baseRecipe.paths;
                 }
 
                 std::string snapId;
@@ -1240,15 +1368,7 @@ std::string handleWebMessage(const std::string& message) {
         return "{\"action\":\"openPathInExplorerResult\",\"success\":true}";
     }
 
-    // ------ PATH Doctor: Prioritize a path in User PATH ------
-    if (action == "prioritizePath") {
-        std::string p = extractJsonValue(message, "path");
-        std::string snapId;
-        bool ok = lazyenv::PathDoctor::prioritizePath(p, g_rollback, snapId);
-        return std::format("{{\"action\":\"prioritizePathResult\",\"success\":{},\"snapshotId\":\"{}\"}}",
-                           ok ? "true" : "false", jsonEscape(snapId));
-    }
-
+    
     // ------ PATH Doctor: Switch Active Version with Cascading Env Vars ------
     if (action == "switchVersion") {
         std::string tool = extractJsonValue(message, "tool");
@@ -1306,7 +1426,7 @@ std::string handleWebMessage(const std::string& message) {
     if (action == "exportDoctorReportDialog") {
         std::string reportContent = extractJsonValue(message, "content");
         HWND owner = g_mainWindow;
-        std::thread([owner, reportContent]() {
+        spawnGuarded("Doctor report export", [owner, reportContent]() {
             CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
             IFileSaveDialog* pDialog = nullptr;
             if (SUCCEEDED(CoCreateInstance(CLSID_FileSaveDialog, nullptr, CLSCTX_INPROC_SERVER,
@@ -1341,29 +1461,11 @@ std::string handleWebMessage(const std::string& message) {
                 pDialog->Release();
             }
             CoUninitialize();
-        }).detach();
+        });
         return "{\"action\":\"exportDoctorReportStarted\"}";
     }
 
-    // ------ Relaunch LazyEnv as Administrator (UAC elevation) ------
-    if (action == "relaunchAsAdmin") {
-        wchar_t exePath[MAX_PATH];
-        GetModuleFileNameW(nullptr, exePath, MAX_PATH);
-
-        SHELLEXECUTEINFOW sei{};
-        sei.cbSize       = sizeof(sei);
-        sei.lpVerb       = L"runas";
-        sei.lpFile       = exePath;
-        sei.hwnd         = g_mainWindow;
-        sei.nShow        = SW_SHOWNORMAL;
-
-        if (ShellExecuteExW(&sei)) {
-            PostMessageW(g_mainWindow, WM_CLOSE, 0, 0);
-            return "{\"action\":\"relaunchSuccess\"}";
-        }
-        return "{\"action\":\"relaunchFailed\"}";
-    }
-
+    
     // ------ Mirror Accelerator: Get current registry URL ------
     if (action == "getMirrorSource") {
         std::string type = extractJsonValue(message, "type");
@@ -1402,7 +1504,9 @@ std::string handleWebMessage(const std::string& message) {
     if (action == "setMirrorSource") {
         std::string type = extractJsonValue(message, "type");
         std::string url  = extractJsonValue(message, "url");
-        std::thread([type, url]() {
+        if (!lazyenv::Installer::isSafeMirrorUrl(url)) {
+            return "{\"action\":\"mirrorSourceSetResult\",\"success\":false}";
+        }        std::thread([type, url]() {
             try {
                 std::string out;
                 int rc = -1;
@@ -1433,19 +1537,7 @@ std::string handleWebMessage(const std::string& message) {
                            jsonEscape(pkgId), pin ? "true" : "false", ok ? "true" : "false");
     }
 
-    // ------ Updates Hub: Get pinned packages list ------
-    if (action == "getPinnedPackages") {
-        auto list = g_updateManager.getPinnedPackages();
-        std::ostringstream os;
-        os << "{\"action\":\"pinnedList\",\"packages\":[";
-        for (size_t i = 0; i < list.size(); ++i) {
-            os << "\"" << jsonEscape(list[i]) << "\"";
-            if (i + 1 < list.size()) os << ",";
-        }
-        os << "]}";
-        return os.str();
-    }
-
+    
     // ------ Check updates for environments ------
     if (action == "checkUpdates") {
         auto envList = parseEnvironmentsFromJson(message);
@@ -1537,10 +1629,17 @@ std::string handleWebMessage(const std::string& message) {
     // ------ Open external URL ------
     if (action == "openUrl") {
         std::string url = extractJsonValue(message, "url");
-        if (!url.empty()) {
-            ShellExecuteA(NULL, "open", url.c_str(), NULL, NULL, SW_SHOWNORMAL);
+        bool ok = false;
+        auto starts = [&](const char* p) { return url.rfind(p, 0) == 0; };
+        // Scheme allowlist: never hand arbitrary strings to the shell "open"
+        // verb (javascript:, file:, exe paths, ...), and use the wide API so
+        // non-ASCII URLs are not mangled by the ANSI code page.
+        if (starts("http://") || starts("https://") || starts("mailto:")) {
+            HINSTANCE hi = ShellExecuteW(NULL, L"open", utf8ToWide(url).c_str(),
+                                         NULL, NULL, SW_SHOWNORMAL);
+            ok = (reinterpret_cast<INT_PTR>(hi) > 32);
         }
-        return "{\"action\":\"openUrlResult\",\"success\":true}";
+        return std::format("{{\"action\":\"openUrlResult\",\"success\":{}}}", ok ? "true" : "false");
     }
 
     // ------ Comprehensive system checks ------
@@ -1630,7 +1729,7 @@ std::string handleWebMessage(const std::string& message) {
         auto catalog = lazyenv::getDefaultCatalog();
         std::string snapId = g_rollback.createSnapshot("Pre-install snapshot");
 
-        std::thread([ids, catalog, snapId]() {
+        spawnGuarded("Package install", [ids, catalog, snapId]() {
             int total = static_cast<int>(ids.size());
             int current = 0;
 
@@ -1644,10 +1743,19 @@ std::string handleWebMessage(const std::string& message) {
                     pkg.id = id;
                     pkg.displayName = id;
                 }
+                if (!lazyenv::Installer::isSafePackageId(pkg.id)) {
+                    // Never embed an unvalidated id into the winget command line.
+                    g_webview.postMessage(std::format(
+                        "{{\"action\":\"installProgress\",\"packageId\":\"{}\","
+                        "\"status\":\"failed\",\"message\":\"Unsafe package id\","
+                        "\"current\":{},\"total\":{}}}",
+                        jsonEscape(id), current + 1, total));
+                    ++current;
+                    continue;
+                }
 
                 std::string cmdLine = std::format(
-                    "{} install --id {} --exact --silent "
-                    "--accept-package-agreements --accept-source-agreements",
+                    "{} install --id {} --exact --silent "                    "--accept-package-agreements --accept-source-agreements",
                     lazyenv::Installer::getWingetExecutable(),
                     pkg.id);
 
@@ -1712,7 +1820,7 @@ std::string handleWebMessage(const std::string& message) {
                     jsonEscape(snapId));
                 g_webview.postMessage(m);
             }
-        }).detach();
+        });
 
         return std::format("{{\"action\":\"installStarted\",\"snapshotId\":\"{}\"}}", jsonEscape(snapId));
     }
@@ -1722,7 +1830,7 @@ std::string handleWebMessage(const std::string& message) {
         std::string id = extractJsonValue(message, "packageId");
         auto catalog = lazyenv::getDefaultCatalog();
 
-        std::thread([id, catalog]() {
+        spawnGuarded("Package retry", [id, catalog]() {
             lazyenv::PackageInfo pkg;
             for (auto& p : catalog) {
                 if (p.id == id) { pkg = p; break; }
@@ -1731,10 +1839,16 @@ std::string handleWebMessage(const std::string& message) {
                 pkg.id = id;
                 pkg.displayName = id;
             }
+            if (!lazyenv::Installer::isSafePackageId(pkg.id)) {
+                g_webview.postMessage(std::format(
+                    "{{\"action\":\"installProgress\",\"packageId\":\"{}\","
+                    "\"status\":\"failed\",\"message\":\"Unsafe package id\"}}",
+                    jsonEscape(id)));
+                return;
+            }
 
             std::string cmdLine = std::format(
-                "{} install --id {} --exact --silent "
-                "--accept-package-agreements --accept-source-agreements",
+                "{} install --id {} --exact --silent "                "--accept-package-agreements --accept-source-agreements",
                 lazyenv::Installer::getWingetExecutable(),
                 pkg.id);
 
@@ -1784,7 +1898,7 @@ std::string handleWebMessage(const std::string& message) {
                     exitCode);
                 g_webview.postMessage(m);
             }
-        }).detach();
+        });
 
         return "{\"action\":\"retryStarted\"}";
     }
@@ -1822,9 +1936,15 @@ std::string handleWebMessage(const std::string& message) {
     // ------ Restore snapshot ------
     if (action == "restoreSnapshot") {
         std::string id = extractJsonValue(message, "snapshotId");
-        bool ok = g_rollback.restoreSnapshot(id);
-        return std::format("{{\"action\":\"restoreResult\",\"success\":{},\"snapshotId\":\"{}\"}}",
-                           ok ? "true" : "false", jsonEscape(id));
+        // Registry rewrite + config file copies can take a while; run off the
+        // UI thread (the JS side treats restoreResult as an async event).
+        spawnGuarded("Snapshot restore", [id]() {
+            bool ok = g_rollback.restoreSnapshot(id);
+            g_webview.postMessage(std::format(
+                "{{\"action\":\"restoreResult\",\"success\":{},\"snapshotId\":\"{}\"}}",
+                ok ? "true" : "false", jsonEscape(id)));
+        });
+        return "";
     }
 
     // ------ Delete snapshot ------
@@ -1843,7 +1963,7 @@ std::string handleWebMessage(const std::string& message) {
         // complex; instead we use the COM file dialog directly here since
         // handleWebMessage is called from the UI thread context.
         HWND owner = g_mainWindow;
-        std::thread([id, owner]() {
+        spawnGuarded("Snapshot export", [id, owner]() {
             // Must CoInitialize for file dialog on this thread
             CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
 
@@ -1892,7 +2012,7 @@ std::string handleWebMessage(const std::string& message) {
                 pDialog->Release();
             }
             CoUninitialize();
-        }).detach();
+        });
 
         return "";
     }
@@ -1900,7 +2020,7 @@ std::string handleWebMessage(const std::string& message) {
     // ------ Import snapshot from file ------
     if (action == "importSnapshot") {
         HWND owner = g_mainWindow;
-        std::thread([owner]() {
+        spawnGuarded("Snapshot import", [owner]() {
             CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
 
             IFileOpenDialog* pDialog = nullptr;
@@ -1943,19 +2063,12 @@ std::string handleWebMessage(const std::string& message) {
                 pDialog->Release();
             }
             CoUninitialize();
-        }).detach();
+        });
 
         return "";
     }
 
-    // ------ Check command ------
-    if (action == "checkCommand") {
-        std::string cmd = extractJsonValue(message, "command");
-        bool ok = lazyenv::Installer::isCommandAvailable(cmd);
-        return std::format("{{\"action\":\"commandCheck\",\"command\":\"{}\",\"available\":{}}}",
-                           jsonEscape(cmd), ok ? "true" : "false");
-    }
-
+    
     // ------ List environment variables (for Settings page) ------
     if (action == "listEnvVars") {
         std::string scope = extractJsonValue(message, "scope");
@@ -2063,8 +2176,7 @@ std::string handleWebMessage(const std::string& message) {
         std::string scope = extractJsonValue(message, "scope");
         bool sys = (scope == "system");
 
-        std::string lowName = toLower(name);
-        if (lowName == "path" || lowName == "systemroot" || lowName == "windir" || lowName == "comspec") {
+        if (lazyenv::RollbackManager::isCriticalEnvVar(name)) {
             return std::format("{{{{\"action\":\"envVarDeleteResult\",\"success\":false,\"name\":\"{}\",\"message\":\"Cannot delete critical system environment variable.\"}}}}",
                 jsonEscape(name));
         }
@@ -2098,15 +2210,7 @@ std::string handleWebMessage(const std::string& message) {
             ok ? "true" : "false", jsonEscape(name));
     }
 
-    // ------ Read env var ------
-    if (action == "readEnv") {
-        std::string name = extractJsonValue(message, "name");
-        bool sys = extractJsonBool(message, "system", false);
-        std::string val = lazyenv::RollbackManager::readEnvVariable(name, sys);
-        return std::format("{{\"action\":\"envValue\",\"name\":\"{}\",\"value\":\"{}\"}}",
-                           jsonEscape(name), jsonEscape(val));
-    }
-
+    
         return "{\"action\":\"error\",\"message\":\"Unknown action\"}";
     } catch (const std::exception& e) {
         return std::format("{{\"action\":\"error\",\"message\":\"{}\"}}", jsonEscape(e.what()));
@@ -2239,14 +2343,36 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 // WinMain
 // ---------------------------------------------------------------------------
 int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, LPWSTR, int nCmdShow) {
+    // Startup diagnostics for CI troubleshooting:
+    {
+        wchar_t a[1024] = L"<empty>";
+        DWORD n = GetEnvironmentVariableW(L"WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", a, 1024);
+        fwprintf(stderr, L"[LazyEnv DIAG] webview2-args-env=%s len=%lu\\n",
+                 (n > 0 && n < 1024) ? a : L"<unset>", n);
+        fflush(stderr);
+    }
     // Enable Per-Monitor DPI awareness (v2)
     SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+
+    // Single-instance guard: a second launch focuses the first window instead
+    // of fighting over the same WebView2 user data folder.
+    HANDLE hSingle = CreateMutexW(nullptr, FALSE, L"LazyEnv.SingleInstance");
+    if (hSingle && GetLastError() == ERROR_ALREADY_EXISTS) {
+        if (HWND existing = FindWindowW(kWindowClass, nullptr)) {
+            if (IsIconic(existing)) ShowWindow(existing, SW_RESTORE);
+            SetForegroundWindow(existing);
+        }
+        if (hSingle) CloseHandle(hSingle);
+        return 0;
+    }
 
     // Initialize COM
     CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
 
     // Check WebView2 runtime
     if (!lazyenv::WebViewHost::isRuntimeAvailable()) {
+        fwprintf(stderr, L"[LazyEnv FATAL] WebView2 runtime not available\n");
+        fflush(stderr);
         MessageBoxW(nullptr,
             L"Microsoft Edge WebView2 Runtime is required but not found.\n"
             L"Please install it from:\n"
@@ -2294,6 +2420,8 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, LPWSTR, int nCmdShow) {
     // Initialize WebView2 with file:// navigation
     g_webview.setMessageHandler(handleWebMessage);
     if (!g_webview.initialize(g_mainWindow, htmlUri)) {
+        fwprintf(stderr, L"[LazyEnv FATAL] WebView2 environment/controller initialization failed\n");
+        fflush(stderr);
         MessageBoxW(nullptr, L"Failed to initialize WebView2.", L"LazyEnv", MB_ICONERROR);
         return 1;
     }
@@ -2309,6 +2437,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, LPWSTR, int nCmdShow) {
     }
 
     CoUninitialize();
+    if (hSingle) CloseHandle(hSingle);
     return static_cast<int>(msg.wParam);
 }
 

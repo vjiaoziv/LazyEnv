@@ -103,6 +103,10 @@ public:
     // v2.0: Discover current machine's configuration files (dotfiles, IDE, Agent)
     static std::vector<RecipeConfigFile> discoverCurrentConfigFiles();
 
+    // Redact credential-bearing lines before a config file is embedded
+    // into a shareable recipe (.npmrc tokens, git passwords, F15).
+    static std::string redactConfigSecrets(const std::string& content);
+
     // v2.0: Discover installed IDE extensions (VS Code, Cursor)
     static std::vector<RecipeIdeExtension> discoverIdeExtensions();
 

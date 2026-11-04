@@ -1017,6 +1017,25 @@ EnvironmentRecipe RecipeManager::createRecipeFromCurrentState(
 
 // ---------------------------------------------------------------------------
 
+std::string RecipeManager::redactConfigSecrets(const std::string& content) {
+    static const char* kSensitive[] = {
+        "_authtoken", "_auth", "password", "passwd", "token", "secret", "credential"
+    };
+    std::istringstream in(content);
+    std::ostringstream out;
+    std::string line;
+    while (std::getline(in, line)) {
+        std::string l = line;
+        for (auto& ch : l)
+            ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+        bool hit = false;
+        for (auto* k : kSensitive) {
+            if (l.find(k) != std::string::npos) { hit = true; break; }
+        }
+        out << (hit ? "# [LazyEnv] redacted sensitive entry" : line) << "\n";
+    }
+    return out.str();
+}
 std::vector<RecipeConfigFile> RecipeManager::discoverCurrentConfigFiles() {
 
     std::vector<RecipeConfigFile> results;
@@ -1037,7 +1056,8 @@ std::vector<RecipeConfigFile> RecipeManager::discoverCurrentConfigFiles() {
 
         if (!content.empty()) {
 
-            results.push_back({ "git", "Git Global Config (.gitconfig)", ".gitconfig", "%USERPROFILE%", content });
+            content = redactConfigSecrets(content);   // F15: strip credentials
+        results.push_back({ "git", "Git Global Config (.gitconfig)", ".gitconfig", "%USERPROFILE%", content });
 
         }
 
@@ -1055,7 +1075,8 @@ std::vector<RecipeConfigFile> RecipeManager::discoverCurrentConfigFiles() {
 
         if (!content.empty()) {
 
-            results.push_back({ "npm", "NPM Global Config (.npmrc)", ".npmrc", "%USERPROFILE%", content });
+            content = redactConfigSecrets(content);   // F15: strip auth tokens
+        results.push_back({ "npm", "NPM Global Config (.npmrc)", ".npmrc", "%USERPROFILE%", content });
 
         }
 
@@ -1103,7 +1124,7 @@ std::vector<RecipeConfigFile> RecipeManager::discoverCurrentConfigFiles() {
 
         if (!content.empty()) {
 
-            results.push_back({ "pip", "Conda Config (.condarc)", ".condarc", "%USERPROFILE%", content });
+            results.push_back({ "conda", "Conda Config (.condarc)", ".condarc", "%USERPROFILE%", content });
 
         }
 
@@ -1386,14 +1407,26 @@ bool RecipeManager::restoreConfigFiles(
         }
 
 
+        // Security check: targetDirMacro must be one of the two known roots.
+        // Anything else (absolute path, drive path, UNC) would let a crafted
+        // recipe write files anywhere on disk.
+        if (c.targetDirMacro != "%USERPROFILE%" && c.targetDirMacro != "%APPDATA%") {
+            if (onLog) onLog("[LazyEnv] Security: skipped non-whitelisted targetDirMacro: " + c.targetDirMacro);
+            continue;
+        }
+        // Security check: relativePath must not be rooted/UNC (leading slash
+        // escapes baseDir after operator/ resolution even without "..").
+        if (relNorm.starts_with("\\")) {
+            if (onLog) onLog("[LazyEnv] Security: skipped rooted relative path: " + c.relativePath);
+            continue;
+        }
+
         std::filesystem::path baseDir;
 
         if (c.targetDirMacro == "%APPDATA%") {
             baseDir = std::filesystem::path(appData);
-        } else if (c.targetDirMacro == "%USERPROFILE%") {
-            baseDir = std::filesystem::path(userProfile);
         } else {
-            baseDir = std::filesystem::path(utf8ToWide(c.targetDirMacro));
+            baseDir = std::filesystem::path(userProfile);
         }
 
 
@@ -1613,23 +1646,23 @@ bool RecipeManager::deployRecipe(
     // 2. Apply Mirrors
 
     if (!diff.mirrors.npm.empty()) {
-
-        if (onLog) onLog("[LazyEnv] Setting NPM mirror: " + diff.mirrors.npm);
-
-        std::string out;
-
-        Installer::runCommand("npm config set registry " + diff.mirrors.npm + " 2>&1", out, 8000);
-
+        if (!Installer::isSafeMirrorUrl(diff.mirrors.npm)) {
+            if (onLog) onLog("[LazyEnv] Security: skipped unsafe npm mirror: " + diff.mirrors.npm);
+        } else {
+            if (onLog) onLog("[LazyEnv] Setting NPM mirror: " + diff.mirrors.npm);
+            std::string out;
+            Installer::runCommand("npm config set registry " + diff.mirrors.npm + " 2>&1", out, 8000);
+        }
     }
 
     if (!diff.mirrors.pip.empty()) {
-
-        if (onLog) onLog("[LazyEnv] Setting Pip mirror: " + diff.mirrors.pip);
-
-        std::string out;
-
-        Installer::runCommand("python -m pip config set global.index-url " + diff.mirrors.pip + " 2>&1", out, 8000);
-
+        if (!Installer::isSafeMirrorUrl(diff.mirrors.pip)) {
+            if (onLog) onLog("[LazyEnv] Security: skipped unsafe pip mirror: " + diff.mirrors.pip);
+        } else {
+            if (onLog) onLog("[LazyEnv] Setting Pip mirror: " + diff.mirrors.pip);
+            std::string out;
+            Installer::runCommand("python -m pip config set global.index-url " + diff.mirrors.pip + " 2>&1", out, 8000);
+        }
     }
 
 
@@ -1639,7 +1672,10 @@ bool RecipeManager::deployRecipe(
     auto catalog = getDefaultCatalog();
 
     for (const auto& p : diff.missingPackages) {
-
+        if (!Installer::isSafePackageId(p.id)) {
+            if (onLog) onLog("[LazyEnv] Security: skipped unsafe package id: " + p.id);
+            continue;
+        }
         if (onLog) onLog("[LazyEnv] Installing missing package: " + p.name + " (" + p.source + ")...");
 
         std::string cmd;

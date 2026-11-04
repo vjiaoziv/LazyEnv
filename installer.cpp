@@ -30,6 +30,7 @@
 #include <unordered_map>
 #include <mutex>
 #include <cctype>
+#include <cstring>
 
 namespace lazyenv {
 
@@ -154,8 +155,10 @@ void Installer::setProgressCallback(ProgressCallback cb) {
 // ---------------------------------------------------------------------------
 // Resolve winget executable path or command name safely via Win32 API
 // ---------------------------------------------------------------------------
+static std::mutex s_wingetCacheMutex;   // guards the cached value (F5)
 std::string Installer::getWingetExecutable() {
     static std::string cached;
+    std::lock_guard<std::mutex> lock(s_wingetCacheMutex);
     if (!cached.empty()) return cached;
 
     // Check if winget is directly callable in PATH
@@ -167,7 +170,8 @@ std::string Installer::getWingetExecutable() {
     // Check LOCALAPPDATA WindowsApps safely using Win32 GetFileAttributesW
     // Do NOT use std::filesystem::exists on AppExecutionAlias reparse points.
     wchar_t localAppData[MAX_PATH];
-    if (GetEnvironmentVariableW(L"LOCALAPPDATA", localAppData, MAX_PATH) > 0) {
+    DWORD _lenLocalAppData = GetEnvironmentVariableW(L"LOCALAPPDATA", localAppData, MAX_PATH);
+    if (_lenLocalAppData > 0 && _lenLocalAppData < MAX_PATH) {
         std::wstring winApps = std::wstring(localAppData) + L"\\Microsoft\\WindowsApps\\winget.exe";
         DWORD attr = GetFileAttributesW(winApps.c_str());
         if (attr != INVALID_FILE_ATTRIBUTES && !(attr & FILE_ATTRIBUTE_DIRECTORY)) {
@@ -202,7 +206,12 @@ InstallResult Installer::installPackage(const PackageInfo& pkg) {
     InstallResult result;
     result.packageId = pkg.id;
     result.status    = InstallStatus::Running;
-
+    if (!isSafePackageId(pkg.id)) {
+        result.status   = InstallStatus::Failed;
+        result.exitCode = -1;
+        result.output   = "Unsafe package id";
+        return result;
+    }
     if (progressCb_)
         progressCb_(pkg.id, InstallStatus::Running,
                     "Installing " + pkg.displayName + "...");
@@ -320,12 +329,8 @@ std::vector<UpdateInfo> Installer::checkUpdates(const std::vector<DetectedEnvIte
                 std::string widLower   = toLower(wEntry.id);
                 std::string wnameLower = toLower(wEntry.name);
 
-                bool idMatch = (!info.packageId.empty() && widLower == toLower(info.packageId));
-                bool nameMatch = (!widLower.empty() && widLower.find(cmdLower) != std::string::npos) ||
-                                 (!wnameLower.empty() && (wnameLower.find(cmdLower) != std::string::npos ||
-                                                          wnameLower.find(nameLower) != std::string::npos));
-
-                if (idMatch || nameMatch) {
+                if (wingetEntryMatches(cmdLower, nameLower, toLower(info.packageId),
+                                       wEntry.id, wEntry.name)) {
                     info.packageId     = wEntry.id;
                     info.latestVersion = wEntry.available;
                     info.hasUpdate     = true;
@@ -392,7 +397,13 @@ InstallResult Installer::upgradeEnvironment(const std::string& command,
     InstallResult result;
     result.packageId = packageId.empty() ? command : packageId;
     result.status    = InstallStatus::Running;
-
+    if ((!packageId.empty() && !isSafePackageId(packageId)) ||
+        (!displayName.empty() && !isSafeShellToken(displayName))) {
+        result.status   = InstallStatus::Failed;
+        result.exitCode = -1;
+        result.output   = "Unsafe package id or display name";
+        return result;
+    }
     if (progressCb_)
         progressCb_(result.packageId, InstallStatus::Running,
                     "Upgrading " + displayName + "...");
@@ -594,6 +605,52 @@ bool Installer::removeFromUserPath(const std::string& directory) {
     return ok;
 }
 
+bool Installer::wingetEntryMatches(const std::string& cmdLower,
+                                   const std::string& nameLower,
+                                   const std::string& packageIdLower,
+                                   const std::string& entryId,
+                                   const std::string& entryName) {
+    std::string eid = toLower(entryId);
+    std::string ename = toLower(entryName);
+    if (!packageIdLower.empty() && eid == packageIdLower) return true;   // exact known id
+    if (eid == cmdLower) return true;                                    // id is the command
+    auto dot = eid.rfind('.');                                           // id last segment == command
+    if (dot != std::string::npos && eid.substr(dot + 1) == cmdLower) return true;
+    if (!ename.empty() && ename == nameLower) return true;               // exact display name
+    return false;                                                        // no substring matching
+}
+bool Installer::isSafePackageId(const std::string& id) {
+    if (id.empty() || id.size() > 200) return false;
+    for (unsigned char c : id) {
+        if (!(std::isalnum(c) || c == '.' || c == '_' || c == '-' ||
+              c == '/' || c == '@' || c == '+'))
+            return false;
+    }
+    return true;
+}
+
+bool Installer::isSafeMirrorUrl(const std::string& url) {
+    auto hasPrefix = [&](const char* p) { return url.rfind(p, 0) == 0; };
+    if (!hasPrefix("http://") && !hasPrefix("https://")) return false;
+    if (url.size() > 500) return false;
+    for (unsigned char c : url) {
+        if (c < 0x20 || c == 0x7F) return false;
+        // '%' would let cmd expand %VAR% even inside quotes; quotes/backticks
+        // break out of the quoting entirely.
+        if (c == '"' || c == '%' || c == '`') return false;
+        if (!(std::isalnum(c) || strchr("._~:/?#=@!$&'()*+,;-", c))) return false;
+    }
+    return true;
+}
+
+bool Installer::isSafeShellToken(const std::string& s) {
+    if (s.empty() || s.size() > 300) return false;
+    for (unsigned char c : s) {
+        if (c < 0x20 || c == 0x7F) return false;
+        if (strchr("&|<>^%\"!`", c)) return false;
+    }
+    return true;   // spaces are allowed: display names legitimately contain them
+}
 bool Installer::isCommandAvailable(const std::string& command) {
     if (command.empty()) return false;
     std::string output;
@@ -649,7 +706,8 @@ bool createOutputPipe(PipeHandles& ph) {
 }
 
 bool launchProcess(const std::string& cmdLine, HANDLE hWritePipe,
-                   PROCESS_INFORMATION& pi) {
+                   PROCESS_INFORMATION& pi, HANDLE& hJob) {
+    hJob = nullptr;
     STARTUPINFOW si{};
     si.cb         = sizeof(si);
     si.dwFlags    = STARTF_USESTDHANDLES | STARTF_USESHOWWINDOW;
@@ -686,6 +744,17 @@ bool launchProcess(const std::string& cmdLine, HANDLE hWritePipe,
         &pi
     );
 
+    if (ok) {
+        // Put the child (and everything it spawns) into a job object so a
+        // timeout can terminate the WHOLE tree, not just cmd.exe. If the
+        // process is already in a restricted job, degrade gracefully.
+        hJob = CreateJobObjectW(nullptr, nullptr);
+        if (hJob && !AssignProcessToJobObject(hJob, pi.hProcess)) {
+            CloseHandle(hJob);
+            hJob = nullptr;
+        }
+    }
+
     if (hNul) {
         CloseHandle(hNul);
     }
@@ -705,12 +774,13 @@ int Installer::runCommand(const std::string& cmdLine,
 
     PipeHandles ph;
     PROCESS_INFORMATION pi{};
+    HANDLE hJob = nullptr;
 
     {
         std::lock_guard<std::mutex> lock(s_processMutex);
         if (!createOutputPipe(ph)) return -1;
 
-        if (!launchProcess(cmdLine, ph.hWrite, pi)) {
+        if (!launchProcess(cmdLine, ph.hWrite, pi, hJob)) {
             CloseHandle(ph.hRead);
             CloseHandle(ph.hWrite);
             return -1;
@@ -751,7 +821,8 @@ int Installer::runCommand(const std::string& cmdLine,
         auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now() - startTime).count();
         if (elapsed >= timeoutMs) {
-            TerminateProcess(pi.hProcess, static_cast<UINT>(-1));
+            if (hJob) TerminateJobObject(hJob, static_cast<UINT>(-1));   // whole tree (F23c)
+            else TerminateProcess(pi.hProcess, static_cast<UINT>(-1));
             break;
         }
     }
@@ -763,6 +834,7 @@ int Installer::runCommand(const std::string& cmdLine,
     GetExitCodeProcess(pi.hProcess, &exitCode);
     CloseHandle(pi.hProcess);
     CloseHandle(pi.hThread);
+    if (hJob) CloseHandle(hJob);
 
     return static_cast<int>(exitCode);
 }
@@ -778,12 +850,13 @@ int Installer::runCommandStreaming(const std::string& cmdLine,
 
     PipeHandles ph;
     PROCESS_INFORMATION pi{};
+    HANDLE hJob = nullptr;
 
     {
         std::lock_guard<std::mutex> lock(s_processMutex);
         if (!createOutputPipe(ph)) return -1;
 
-        if (!launchProcess(cmdLine, ph.hWrite, pi)) {
+        if (!launchProcess(cmdLine, ph.hWrite, pi, hJob)) {
             CloseHandle(ph.hRead);
             CloseHandle(ph.hWrite);
             return -1;
@@ -841,7 +914,8 @@ int Installer::runCommandStreaming(const std::string& cmdLine,
         auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now() - startTime).count();
         if (elapsed >= timeoutMs) {
-            TerminateProcess(pi.hProcess, static_cast<UINT>(-1));
+            if (hJob) TerminateJobObject(hJob, static_cast<UINT>(-1));   // whole tree (F23c)
+            else TerminateProcess(pi.hProcess, static_cast<UINT>(-1));
             break;
         }
     }
@@ -860,6 +934,7 @@ int Installer::runCommandStreaming(const std::string& cmdLine,
     GetExitCodeProcess(pi.hProcess, &exitCode);
     CloseHandle(pi.hProcess);
     CloseHandle(pi.hThread);
+    if (hJob) CloseHandle(hJob);
 
     return static_cast<int>(exitCode);
 }

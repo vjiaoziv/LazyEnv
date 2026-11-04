@@ -33,6 +33,8 @@
 #include <format>
 #include <cstdio>
 #include <mutex>
+#include <cctype>
+#include <unordered_set>
 
 // ---------------------------------------------------------------------------
 // Minimal JSON helpers (no external dependency)
@@ -243,6 +245,12 @@ std::vector<lazyenv::SnapshotEntry> parseEntryArray(const std::string& json,
     return entries;
 }
 
+static std::string toLowerCopy(std::string s) {
+    for (auto& c : s)
+        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    return s;
+}
+
 std::wstring utf8ToWide(const std::string& s) {
     if (s.empty()) return {};
     int len = MultiByteToWideChar(CP_UTF8, 0, s.data(),
@@ -288,7 +296,7 @@ RollbackManager::RollbackManager() {
 // ---------------------------------------------------------------------------
 // Registry capture
 // ---------------------------------------------------------------------------
-std::vector<SnapshotEntry> RollbackManager::captureRegistryKey(bool system) {
+std::vector<SnapshotEntry> RollbackManager::captureRegistryKey(bool system, bool* truncated) {
     std::vector<SnapshotEntry> entries;
 
     HKEY root = system ? HKEY_LOCAL_MACHINE : HKEY_CURRENT_USER;
@@ -300,27 +308,41 @@ std::vector<SnapshotEntry> RollbackManager::captureRegistryKey(bool system) {
     if (RegOpenKeyExW(root, subkey, 0, KEY_READ, &hKey) != ERROR_SUCCESS)
         return entries;
 
+    if (truncated) *truncated = false;
     DWORD index = 0;
-    wchar_t nameBuf[32767];
-    BYTE   dataBuf[32767];
+    wchar_t nameBuf[16384];
+    std::vector<BYTE> dataBuf(1024 * 1024);   // heap, covers practical registry value cap
     while (true) {
         DWORD nameLen = sizeof(nameBuf) / sizeof(wchar_t);
-        DWORD dataLen = sizeof(dataBuf);
+        DWORD dataLen = static_cast<DWORD>(dataBuf.size());
         DWORD type    = 0;
         LONG  rc = RegEnumValueW(hKey, index, nameBuf, &nameLen,
-                                 nullptr, &type, dataBuf, &dataLen);
-        if (rc != ERROR_SUCCESS) break;
+                                 nullptr, &type, dataBuf.data(), &dataLen);
+        if (rc == ERROR_MORE_DATA) {
+            // Oversized value: record truncation and SKIP, never abort the
+            // enumeration (the old code broke here and silently lost every
+            // variable after it, which made later restores wipe them).
+            if (truncated) *truncated = true;
+            ++index;
+            continue;
+        }
+        if (rc != ERROR_SUCCESS) break;   // ERROR_NO_MORE_DATA = normal end
+
+        // Snapshots only carry string values; non-string types cannot be
+        // serialized into SnapshotEntry::value and are left untouched on restore.
+        if (type != REG_SZ && type != REG_EXPAND_SZ) {
+            ++index;
+            continue;
+        }
 
         SnapshotEntry e;
         e.name  = wideToUtf8(std::wstring(nameBuf, nameLen));
         e.type  = type;
-        if (type == REG_SZ || type == REG_EXPAND_SZ) {
-            // dataLen includes null terminator (in bytes)
-            size_t wcharCount = dataLen / sizeof(wchar_t);
-            if (wcharCount > 0 && reinterpret_cast<wchar_t*>(dataBuf)[wcharCount - 1] == L'\0')
-                --wcharCount;
-            e.value = wideToUtf8(std::wstring(reinterpret_cast<wchar_t*>(dataBuf), wcharCount));
-        }
+        // dataLen includes null terminator (in bytes)
+        size_t wcharCount = dataLen / sizeof(wchar_t);
+        if (wcharCount > 0 && reinterpret_cast<wchar_t*>(dataBuf.data())[wcharCount - 1] == L'\0')
+            --wcharCount;
+        e.value = wideToUtf8(std::wstring(reinterpret_cast<wchar_t*>(dataBuf.data()), wcharCount));
         entries.push_back(std::move(e));
         ++index;
     }
@@ -344,17 +366,32 @@ bool RollbackManager::restoreRegistryKey(
     if (RegOpenKeyExW(root, subkey, 0, access, &hKey) != ERROR_SUCCESS)
         return false;
 
-    // Step 1: delete all existing values
+    // Step 1: delete only STRING values that the snapshot does not carry.
+    // Non-string values (REG_DWORD etc.) cannot be represented in
+    // SnapshotEntry::value; deleting them and failing to rewrite them would
+    // silently destroy them, so they are left untouched instead.
+    std::unordered_set<std::string> wanted;
+    for (const auto& e : entries) wanted.insert(toLowerCopy(e.name));
+
     std::vector<std::wstring> existing;
     {
         DWORD idx = 0;
-        wchar_t buf[32767];
+        wchar_t buf[16384];
         while (true) {
-            DWORD len = sizeof(buf) / sizeof(wchar_t);
-            if (RegEnumValueW(hKey, idx, buf, &len,
-                              nullptr, nullptr, nullptr, nullptr) != ERROR_SUCCESS)
-                break;
-            existing.emplace_back(buf, len);
+            DWORD len = static_cast<DWORD>(std::size(buf));
+            LONG rc = RegEnumValueW(hKey, idx, buf, &len,
+                                    nullptr, nullptr, nullptr, nullptr);
+            if (rc == ERROR_MORE_DATA) { ++idx; continue; }
+            if (rc != ERROR_SUCCESS) break;   // ERROR_NO_MORE_ITEMS (259) = end
+            if (rc != ERROR_SUCCESS) break;
+
+            DWORD type = 0, cb = 0;
+            if (RegQueryValueExW(hKey, buf, nullptr, &type, nullptr, &cb) == ERROR_SUCCESS
+                && (type == REG_SZ || type == REG_EXPAND_SZ)) {
+                std::string nm = toLowerCopy(wideToUtf8(std::wstring(buf, len)));
+                if (wanted.find(nm) == wanted.end())
+                    existing.emplace_back(buf, len);
+            }
             ++idx;
         }
     }
@@ -362,8 +399,9 @@ bool RollbackManager::restoreRegistryKey(
         RegDeleteValueW(hKey, name.c_str());
     }
 
-    // Step 2: write snapshot values
+    // Step 2: write snapshot values (string entries only)
     for (auto& e : entries) {
+        if (e.type != REG_SZ && e.type != REG_EXPAND_SZ) continue;
         std::wstring wname = utf8ToWide(e.name);
         std::wstring wval  = utf8ToWide(e.value);
         DWORD dataSize = static_cast<DWORD>((wval.size() + 1) * sizeof(wchar_t));
@@ -424,6 +462,23 @@ bool RollbackManager::writeEnvVariable(const std::string& name,
     return rc == ERROR_SUCCESS;
 }
 
+bool RollbackManager::isCriticalEnvVar(const std::string& name) {
+    static const char* kCritical[] = {
+        "path", "pathext", "systemroot", "windir", "comspec", "systemdrive",
+        "userprofile", "homedrive", "homepath", "appdata", "localappdata",
+        "public", "temp", "tmp", "programdata", "programfiles",
+        "programfiles(x86)", "programw6432", "psmodulepath",
+        "username", "userdomain", "os", "number_of_processors",
+        "processor_architecture"
+    };
+    std::string n = name;
+    for (auto& ch : n)
+        ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+    for (auto* c : kCritical) {
+        if (n == c) return true;
+    }
+    return false;
+}
 void RollbackManager::broadcastEnvironmentChange() {
     DWORD_PTR result = 0;
     SendMessageTimeoutW(HWND_BROADCAST, WM_SETTINGCHANGE, 0,
@@ -439,8 +494,18 @@ std::string RollbackManager::createSnapshot(const std::string& description) {
     snap.id          = generateId();
     snap.timestamp   = currentTimestamp();
     snap.description = description.empty() ? "Manual snapshot" : description;
-    snap.user_env    = captureRegistryKey(false);
-    snap.system_env  = captureRegistryKey(true);
+    bool truncU = false, truncS = false;
+    snap.user_env    = captureRegistryKey(false, &truncU);
+    snap.system_env  = captureRegistryKey(true,  &truncS);
+    // A capture that yielded zero user values means the read FAILED (key open
+    // error), not that the machine has no environment; persisting it would let
+    // PATH operations rebuild from an empty base and blank the real PATH.
+    if (snap.user_env.empty())
+        return "";
+    // Refuse to persist a knowingly-incomplete snapshot: restoring a truncated
+    // snapshot would delete variables that were never captured (data loss).
+    if (truncU || truncS)
+        return "";
 
     if (!saveSnapshot(snap))
         return "";
@@ -473,6 +538,23 @@ bool RollbackManager::restoreSnapshot(const std::string& snapshotId) {
     if (!std::filesystem::exists(path)) return false;
 
     Snapshot snap = loadSnapshot(path);
+    if (snap.id.empty() || snap.timestamp.empty()) return false;
+    // An empty user_env snapshot would wipe the whole user environment on
+    // restore; refuse it as corrupt instead of destroying data.
+    if (snap.user_env.empty()) return false;
+    // Sanity guard: a snapshot whose user_env does not even carry "Path"
+    // cannot be a real user-environment capture. Restoring it would delete
+    // every current string value that is not in the (polluted) set.
+    {
+        bool snapHasPath = false;
+        for (const auto& e : snap.user_env) {
+            std::string n = e.name;
+            for (auto& c : n) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+            if (n == "path") { snapHasPath = true; break; }
+        }
+        if (!snapHasPath && !readEnvVariable("Path", false).empty())
+            return false;
+    }
 
     // Restore user environment
     if (!restoreRegistryKey(snap.user_env, false))
@@ -615,8 +697,10 @@ Snapshot RollbackManager::loadSnapshot(const std::filesystem::path& path) const 
 // ---------------------------------------------------------------------------
 // Utilities
 // ---------------------------------------------------------------------------
+static std::mutex s_rngMutex;   // guards the shared PRNG (F5)
 std::string RollbackManager::generateId() {
     static std::mt19937 rng(std::random_device{}());
+    std::lock_guard<std::mutex> lock(s_rngMutex);
     std::uniform_int_distribution<uint32_t> dist(0, 0xFFFFFFFF);
     return std::format("{:08x}-{:04x}-{:04x}-{:04x}-{:012x}",
                        dist(rng),

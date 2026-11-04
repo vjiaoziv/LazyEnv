@@ -131,6 +131,20 @@ public:
     // Check if a command is reachable via current PATH.
     static bool isCommandAvailable(const std::string& command);
 
+    // Input safety: whitelist validators for strings that are embedded
+    // into shell command lines (command-injection defense, F4).
+    static bool isSafePackageId(const std::string& id);    // alnum . _ - / @ +
+    static bool isSafeMirrorUrl(const std::string& url);   // http(s):// only, no " % control chars
+    static bool isSafeShellToken(const std::string& s);    // no & | < > ^ % " ! and control chars
+
+    // Update matching: exact id / id-last-segment / exact name only
+    // (substring matching mis-reported unrelated packages, F11).
+    static bool wingetEntryMatches(const std::string& cmdLower,
+                                    const std::string& nameLower,
+                                    const std::string& packageIdLower,
+                                    const std::string& entryId,
+                                    const std::string& entryName);
+
     // Run an arbitrary command and capture output (blocking).
     static int runCommand(const std::string& cmdLine,
                           std::string& output,

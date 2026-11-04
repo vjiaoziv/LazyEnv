@@ -7,6 +7,7 @@
 // (at your option) any later version.
 
 #include "update_manager.h"
+#include "installer.h"   // isSafePackageId (F21c)
 #include <ShlObj.h>
 #include <future>
 #include <fstream>
@@ -91,7 +92,9 @@ FailureDiagnostic UpdateManager::diagnoseFailure(int exitCode, const std::string
     if (output.find("0x80070020") != std::string::npos ||
         output.find("used by another process") != std::string::npos ||
         output.find("being used") != std::string::npos ||
-        output.find("running") != std::string::npos ||
+        output.find("is running") != std::string::npos ||
+        output.find("currently running") != std::string::npos ||
+        output.find("close the app") != std::string::npos ||
         output.find("文件被占用") != std::string::npos ||
         output.find("正在运行") != std::string::npos ||
         output.find("另一个安装程序") != std::string::npos ||
@@ -214,6 +217,8 @@ BatchUpgradeSummary UpdateManager::upgradeBatch(
 
 bool UpdateManager::setPackagePinned(const std::string& packageId, bool pinned) {
     if (packageId.empty()) return false;
+    // Reject ids that could corrupt the persisted JSON file (quotes/backslashes)
+    if (!Installer::isSafePackageId(packageId)) return false;
     if (pinned) {
         pinnedPackages_.insert(packageId);
     } else {

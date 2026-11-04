@@ -95,11 +95,15 @@ public:
     // Broadcast WM_SETTINGCHANGE so running processes pick up changes.
     static void broadcastEnvironmentChange();
 
+    // True for environment variables whose deletion breaks Windows
+    // or the user session (F12). Case-insensitive.
+    static bool isCriticalEnvVar(const std::string& name);
+
 private:
     std::filesystem::path storageDir_;
 
     // Capture all variables from a registry key.
-    static std::vector<SnapshotEntry> captureRegistryKey(bool system);
+    static std::vector<SnapshotEntry> captureRegistryKey(bool system, bool* truncated = nullptr);
 
     // Restore all variables from a snapshot entry list to a registry key.
     static bool restoreRegistryKey(const std::vector<SnapshotEntry>& entries,
