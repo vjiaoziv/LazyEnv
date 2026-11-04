@@ -2,17 +2,24 @@ import { spawn, execSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
-import { cpSync, rmSync } from 'node:fs';
+import { cpSync, rmSync, existsSync, readdirSync, copyFileSync } from 'node:fs';
 const SRC = join(ROOT, 'build', 'Release');
 const DIR = join(ROOT, 'build', 'smoke 测试%#');
 const PORT = 9258;
 rmSync(DIR, { recursive: true, force: true });
 cpSync(SRC, DIR, { recursive: true });
+const exeInDir = join(DIR, 'LazyEnv.exe');
+if (!existsSync(exeInDir)) {
+  try { copyFileSync(join(SRC, 'LazyEnv.exe'), exeInDir); } catch (e) { console.log('[smoke] fallback copy failed: ' + e.message); }
+  console.log('[smoke] entries: ' + (existsSync(DIR) ? readdirSync(DIR).join(', ') : '<no dir>'));
+}
+if (!existsSync(exeInDir)) throw new Error('smoke exe missing after copy: ' + DIR);
 console.log('[diag] args-env=' + (process.env.WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS || '<unset>'));
 const proc = spawn(DIR + '\\LazyEnv.exe', [], {
   env: { ...process.env, WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${PORT}` },
   stdio: ['ignore', 'pipe', 'pipe']
 });
+proc.on('error', e => { console.error('[smoke] spawn error: ' + e.message); process.exit(1); });
 let appOutput = '';
 proc.stdout?.on('data', d => { appOutput += d; });
 proc.stderr?.on('data', d => { appOutput += d; });
