@@ -1585,10 +1585,17 @@ std::string handleWebMessage(const std::string& message) {
     // ------ Open external URL ------
     if (action == "openUrl") {
         std::string url = extractJsonValue(message, "url");
-        if (!url.empty()) {
-            ShellExecuteA(NULL, "open", url.c_str(), NULL, NULL, SW_SHOWNORMAL);
+        bool ok = false;
+        auto starts = [&](const char* p) { return url.rfind(p, 0) == 0; };
+        // Scheme allowlist: never hand arbitrary strings to the shell "open"
+        // verb (javascript:, file:, exe paths, ...), and use the wide API so
+        // non-ASCII URLs are not mangled by the ANSI code page.
+        if (starts("http://") || starts("https://") || starts("mailto:")) {
+            HINSTANCE hi = ShellExecuteW(NULL, L"open", utf8ToWide(url).c_str(),
+                                         NULL, NULL, SW_SHOWNORMAL);
+            ok = (reinterpret_cast<INT_PTR>(hi) > 32);
         }
-        return "{\"action\":\"openUrlResult\",\"success\":true}";
+        return std::format("{{\"action\":\"openUrlResult\",\"success\":{}}}", ok ? "true" : "false");
     }
 
     // ------ Comprehensive system checks ------
