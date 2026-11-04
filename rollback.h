@@ -99,7 +99,7 @@ private:
     std::filesystem::path storageDir_;
 
     // Capture all variables from a registry key.
-    static std::vector<SnapshotEntry> captureRegistryKey(bool system);
+    static std::vector<SnapshotEntry> captureRegistryKey(bool system, bool* truncated = nullptr);
 
     // Restore all variables from a snapshot entry list to a registry key.
     static bool restoreRegistryKey(const std::vector<SnapshotEntry>& entries,

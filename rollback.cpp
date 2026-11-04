@@ -288,7 +288,7 @@ RollbackManager::RollbackManager() {
 // ---------------------------------------------------------------------------
 // Registry capture
 // ---------------------------------------------------------------------------
-std::vector<SnapshotEntry> RollbackManager::captureRegistryKey(bool system) {
+std::vector<SnapshotEntry> RollbackManager::captureRegistryKey(bool system, bool* truncated) {
     std::vector<SnapshotEntry> entries;
 
     HKEY root = system ? HKEY_LOCAL_MACHINE : HKEY_CURRENT_USER;
@@ -300,27 +300,41 @@ std::vector<SnapshotEntry> RollbackManager::captureRegistryKey(bool system) {
     if (RegOpenKeyExW(root, subkey, 0, KEY_READ, &hKey) != ERROR_SUCCESS)
         return entries;
 
+    if (truncated) *truncated = false;
     DWORD index = 0;
-    wchar_t nameBuf[32767];
-    BYTE   dataBuf[32767];
+    wchar_t nameBuf[16384];
+    std::vector<BYTE> dataBuf(1024 * 1024);   // heap, covers practical registry value cap
     while (true) {
         DWORD nameLen = sizeof(nameBuf) / sizeof(wchar_t);
-        DWORD dataLen = sizeof(dataBuf);
+        DWORD dataLen = static_cast<DWORD>(dataBuf.size());
         DWORD type    = 0;
         LONG  rc = RegEnumValueW(hKey, index, nameBuf, &nameLen,
-                                 nullptr, &type, dataBuf, &dataLen);
-        if (rc != ERROR_SUCCESS) break;
+                                 nullptr, &type, dataBuf.data(), &dataLen);
+        if (rc == ERROR_MORE_DATA) {
+            // Oversized value: record truncation and SKIP, never abort the
+            // enumeration (the old code broke here and silently lost every
+            // variable after it, which made later restores wipe them).
+            if (truncated) *truncated = true;
+            ++index;
+            continue;
+        }
+        if (rc != ERROR_SUCCESS) break;   // ERROR_NO_MORE_DATA = normal end
+
+        // Snapshots only carry string values; non-string types cannot be
+        // serialized into SnapshotEntry::value and are left untouched on restore.
+        if (type != REG_SZ && type != REG_EXPAND_SZ) {
+            ++index;
+            continue;
+        }
 
         SnapshotEntry e;
         e.name  = wideToUtf8(std::wstring(nameBuf, nameLen));
         e.type  = type;
-        if (type == REG_SZ || type == REG_EXPAND_SZ) {
-            // dataLen includes null terminator (in bytes)
-            size_t wcharCount = dataLen / sizeof(wchar_t);
-            if (wcharCount > 0 && reinterpret_cast<wchar_t*>(dataBuf)[wcharCount - 1] == L'\0')
-                --wcharCount;
-            e.value = wideToUtf8(std::wstring(reinterpret_cast<wchar_t*>(dataBuf), wcharCount));
-        }
+        // dataLen includes null terminator (in bytes)
+        size_t wcharCount = dataLen / sizeof(wchar_t);
+        if (wcharCount > 0 && reinterpret_cast<wchar_t*>(dataBuf.data())[wcharCount - 1] == L'\0')
+            --wcharCount;
+        e.value = wideToUtf8(std::wstring(reinterpret_cast<wchar_t*>(dataBuf.data()), wcharCount));
         entries.push_back(std::move(e));
         ++index;
     }
@@ -439,8 +453,13 @@ std::string RollbackManager::createSnapshot(const std::string& description) {
     snap.id          = generateId();
     snap.timestamp   = currentTimestamp();
     snap.description = description.empty() ? "Manual snapshot" : description;
-    snap.user_env    = captureRegistryKey(false);
-    snap.system_env  = captureRegistryKey(true);
+    bool truncU = false, truncS = false;
+    snap.user_env    = captureRegistryKey(false, &truncU);
+    snap.system_env  = captureRegistryKey(true,  &truncS);
+    // Refuse to persist a knowingly-incomplete snapshot: restoring a truncated
+    // snapshot would delete variables that were never captured (data loss).
+    if (truncU || truncS)
+        return "";
 
     if (!saveSnapshot(snap))
         return "";

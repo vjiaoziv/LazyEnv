@@ -326,6 +326,33 @@ int main() {
         lazyenv::PathDoctor::removePath(dummyPath, false, rollback, cleanupSnap);
     }
 
+
+    // -------------------------------------------------------------
+    // Test Group 11: Oversized registry value capture (F1)
+    // -------------------------------------------------------------
+    std::cout << "\n[Test Group 11: Oversized registry value capture]\n";
+    {
+        std::string bigVal(200 * 1024, 'A');   // 200KB > old 32767-byte stack buffer
+        lazyenv::RollbackManager::writeEnvVariable("LazyEnvTestBigVar", bigVal, REG_SZ, false);
+        lazyenv::RollbackManager rb;
+        std::string sid = rb.createSnapshot("F1 big value");
+        test("createSnapshot with 200KB value returns id", !sid.empty());
+        if (!sid.empty()) {
+            std::string json;
+            {
+                std::ifstream f(rb.getStorageDir() / (sid + ".json"), std::ios::binary);
+                json.assign((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+            }   // close before delete, otherwise delete throws (file lock)
+            test("Oversized value captured in snapshot file",
+                 json.find("LazyEnvTestBigVar") != std::string::npos);
+            rb.deleteSnapshot(sid);
+        }
+        HKEY k = nullptr;
+        if (RegOpenKeyExW(HKEY_CURRENT_USER, L"Environment", 0, KEY_SET_VALUE, &k) == ERROR_SUCCESS) {
+            RegDeleteValueW(k, L"LazyEnvTestBigVar");
+            RegCloseKey(k);
+        }
+    }
     std::cout << "\n=============================================================\n";
     std::cout << "Test Summary: " << g_passed << " passed, " << g_failed << " failed\n";
     std::cout << "=============================================================\n";
