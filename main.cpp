@@ -253,6 +253,60 @@ bool extractJsonBool(const std::string& json, const std::string& key, bool defau
 }
 
 
+static size_t findMatchingJsonArrayEnd(const std::string& str, size_t openBracketPos) {
+    if (openBracketPos >= str.size() || str[openBracketPos] != '[') return std::string::npos;
+    bool inStr = false;
+    int depth = 0;
+    for (size_t i = openBracketPos; i < str.size(); ++i) {
+        char c = str[i];
+        if (inStr) {
+            if (c == '\\' && i + 1 < str.size()) {
+                ++i;
+            } else if (c == '\"') {
+                inStr = false;
+            }
+        } else {
+            if (c == '\"') {
+                inStr = true;
+            } else if (c == '[') {
+                depth++;
+            } else if (c == ']') {
+                depth--;
+                if (depth == 0) return i;
+            }
+        }
+    }
+    return std::string::npos;
+}
+
+static size_t findMatchingJsonObjectEnd(const std::string& str, size_t openBracePos) {
+    if (openBracePos >= str.size() || str[openBracePos] != '{') return std::string::npos;
+    bool inStr = false;
+    int depth = 0;
+    for (size_t i = openBracePos; i < str.size(); ++i) {
+        char c = str[i];
+        if (inStr) {
+            if (c == '\\' && i + 1 < str.size()) {
+                ++i;
+            } else if (c == '\"') {
+                inStr = false;
+            }
+        } else {
+            if (c == '\"') {
+                inStr = true;
+            } else if (c == '{') {
+                depth++;
+            } else if (c == '}') {
+                depth--;
+                if (depth == 0) return i;
+            }
+        }
+    }
+    return std::string::npos;
+}
+
+// Parse a JSON array of SnapshotEntry objects.
+
 std::vector<std::string> extractJsonArray(const std::string& json,
                                           const std::string& key) {
     std::vector<std::string> result;
@@ -550,14 +604,14 @@ std::vector<lazyenv::DetectedEnvItem> parseEnvironmentsFromJson(const std::strin
     if (envsPos == std::string::npos) return list;
     auto startArr = message.find('[', envsPos);
     if (startArr == std::string::npos) return list;
-    auto endArr = message.rfind(']');
+    auto endArr = findMatchingJsonArrayEnd(message, startArr);
     if (endArr == std::string::npos || endArr <= startArr) return list;
 
     size_t pos = startArr + 1;
     while (pos < endArr) {
         auto objStart = message.find('{', pos);
         if (objStart == std::string::npos || objStart >= endArr) break;
-        auto objEnd = message.find('}', objStart);
+        auto objEnd = findMatchingJsonObjectEnd(message, objStart);
         if (objEnd == std::string::npos || objEnd > endArr) break;
         std::string itemJson = message.substr(objStart, objEnd - objStart + 1);
         lazyenv::DetectedEnvItem item;
@@ -579,14 +633,14 @@ std::vector<lazyenv::RecipePackageItem> parseMissingPackagesFromJson(const std::
     if (pPos == std::string::npos) return items;
     auto startArr = message.find('[', pPos);
     if (startArr == std::string::npos) return items;
-    auto endArr = message.rfind(']');
+    auto endArr = findMatchingJsonArrayEnd(message, startArr);
     if (endArr == std::string::npos || endArr <= startArr) return items;
 
     size_t pos = startArr + 1;
     while (pos < endArr) {
         auto oStart = message.find('{', pos);
         if (oStart == std::string::npos || oStart >= endArr) break;
-        auto oEnd = message.find('}', oStart);
+        auto oEnd = findMatchingJsonObjectEnd(message, oStart);
         if (oEnd == std::string::npos || oEnd > endArr) break;
         std::string itemJson = message.substr(oStart, oEnd - oStart + 1);
         lazyenv::RecipePackageItem itm;
@@ -607,14 +661,14 @@ std::vector<lazyenv::RecipeEnvVar> parseEnvVarsFromJson(const std::string& messa
     if (vPos == std::string::npos) return vars;
     auto startArr = message.find('[', vPos);
     if (startArr == std::string::npos) return vars;
-    auto endArr = message.rfind(']');
+    auto endArr = findMatchingJsonArrayEnd(message, startArr);
     if (endArr == std::string::npos || endArr <= startArr) return vars;
 
     size_t pos = startArr + 1;
     while (pos < endArr) {
         auto oStart = message.find('{', pos);
         if (oStart == std::string::npos || oStart >= endArr) break;
-        auto oEnd = message.find('}', oStart);
+        auto oEnd = findMatchingJsonObjectEnd(message, oStart);
         if (oEnd == std::string::npos || oEnd > endArr) break;
         std::string itemJson = message.substr(oStart, oEnd - oStart + 1);
         lazyenv::RecipeEnvVar v;
@@ -634,14 +688,14 @@ std::vector<lazyenv::UpgradeTarget> parseUpgradeTargetsFromJson(const std::strin
     if (tPos == std::string::npos) return targets;
     auto startArr = message.find('[', tPos);
     if (startArr == std::string::npos) return targets;
-    auto endArr = message.rfind(']');
+    auto endArr = findMatchingJsonArrayEnd(message, startArr);
     if (endArr == std::string::npos || endArr <= startArr) return targets;
 
     size_t pos = startArr + 1;
     while (pos < endArr) {
         auto objStart = message.find('{', pos);
         if (objStart == std::string::npos || objStart >= endArr) break;
-        auto objEnd = message.find('}', objStart);
+        auto objEnd = findMatchingJsonObjectEnd(message, objStart);
         if (objEnd == std::string::npos || objEnd > endArr) break;
         std::string itemJson = message.substr(objStart, objEnd - objStart + 1);
 
