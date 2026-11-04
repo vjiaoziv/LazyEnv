@@ -1625,23 +1625,23 @@ bool RecipeManager::deployRecipe(
     // 2. Apply Mirrors
 
     if (!diff.mirrors.npm.empty()) {
-
-        if (onLog) onLog("[LazyEnv] Setting NPM mirror: " + diff.mirrors.npm);
-
-        std::string out;
-
-        Installer::runCommand("npm config set registry " + diff.mirrors.npm + " 2>&1", out, 8000);
-
+        if (!Installer::isSafeMirrorUrl(diff.mirrors.npm)) {
+            if (onLog) onLog("[LazyEnv] Security: skipped unsafe npm mirror: " + diff.mirrors.npm);
+        } else {
+            if (onLog) onLog("[LazyEnv] Setting NPM mirror: " + diff.mirrors.npm);
+            std::string out;
+            Installer::runCommand("npm config set registry " + diff.mirrors.npm + " 2>&1", out, 8000);
+        }
     }
 
     if (!diff.mirrors.pip.empty()) {
-
-        if (onLog) onLog("[LazyEnv] Setting Pip mirror: " + diff.mirrors.pip);
-
-        std::string out;
-
-        Installer::runCommand("python -m pip config set global.index-url " + diff.mirrors.pip + " 2>&1", out, 8000);
-
+        if (!Installer::isSafeMirrorUrl(diff.mirrors.pip)) {
+            if (onLog) onLog("[LazyEnv] Security: skipped unsafe pip mirror: " + diff.mirrors.pip);
+        } else {
+            if (onLog) onLog("[LazyEnv] Setting Pip mirror: " + diff.mirrors.pip);
+            std::string out;
+            Installer::runCommand("python -m pip config set global.index-url " + diff.mirrors.pip + " 2>&1", out, 8000);
+        }
     }
 
 
@@ -1651,7 +1651,10 @@ bool RecipeManager::deployRecipe(
     auto catalog = getDefaultCatalog();
 
     for (const auto& p : diff.missingPackages) {
-
+        if (!Installer::isSafePackageId(p.id)) {
+            if (onLog) onLog("[LazyEnv] Security: skipped unsafe package id: " + p.id);
+            continue;
+        }
         if (onLog) onLog("[LazyEnv] Installing missing package: " + p.name + " (" + p.source + ")...");
 
         std::string cmd;
