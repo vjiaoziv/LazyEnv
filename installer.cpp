@@ -328,12 +328,8 @@ std::vector<UpdateInfo> Installer::checkUpdates(const std::vector<DetectedEnvIte
                 std::string widLower   = toLower(wEntry.id);
                 std::string wnameLower = toLower(wEntry.name);
 
-                bool idMatch = (!info.packageId.empty() && widLower == toLower(info.packageId));
-                bool nameMatch = (!widLower.empty() && widLower.find(cmdLower) != std::string::npos) ||
-                                 (!wnameLower.empty() && (wnameLower.find(cmdLower) != std::string::npos ||
-                                                          wnameLower.find(nameLower) != std::string::npos));
-
-                if (idMatch || nameMatch) {
+                if (wingetEntryMatches(cmdLower, nameLower, toLower(info.packageId),
+                                       wEntry.id, wEntry.name)) {
                     info.packageId     = wEntry.id;
                     info.latestVersion = wEntry.available;
                     info.hasUpdate     = true;
@@ -608,6 +604,20 @@ bool Installer::removeFromUserPath(const std::string& directory) {
     return ok;
 }
 
+bool Installer::wingetEntryMatches(const std::string& cmdLower,
+                                   const std::string& nameLower,
+                                   const std::string& packageIdLower,
+                                   const std::string& entryId,
+                                   const std::string& entryName) {
+    std::string eid = toLower(entryId);
+    std::string ename = toLower(entryName);
+    if (!packageIdLower.empty() && eid == packageIdLower) return true;   // exact known id
+    if (eid == cmdLower) return true;                                    // id is the command
+    auto dot = eid.rfind('.');                                           // id last segment == command
+    if (dot != std::string::npos && eid.substr(dot + 1) == cmdLower) return true;
+    if (!ename.empty() && ename == nameLower) return true;               // exact display name
+    return false;                                                        // no substring matching
+}
 bool Installer::isSafePackageId(const std::string& id) {
     if (id.empty() || id.size() > 200) return false;
     for (unsigned char c : id) {

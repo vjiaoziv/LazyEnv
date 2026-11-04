@@ -137,6 +137,14 @@ public:
     static bool isSafeMirrorUrl(const std::string& url);   // http(s):// only, no " % control chars
     static bool isSafeShellToken(const std::string& s);    // no & | < > ^ % " ! and control chars
 
+    // Update matching: exact id / id-last-segment / exact name only
+    // (substring matching mis-reported unrelated packages, F11).
+    static bool wingetEntryMatches(const std::string& cmdLower,
+                                    const std::string& nameLower,
+                                    const std::string& packageIdLower,
+                                    const std::string& entryId,
+                                    const std::string& entryName);
+
     // Run an arbitrary command and capture output (blocking).
     static int runCommand(const std::string& cmdLine,
                           std::string& output,

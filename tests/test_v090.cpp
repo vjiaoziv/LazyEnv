@@ -543,6 +543,22 @@ int main() {
     std::cout << "\n[Test Group 16: Environment preservation guard]\n";
     test("HKCU environment value count preserved by suite",
          g_hkcuBaseline >= 0 && hkcuValueCount() == g_hkcuBaseline);
+
+    // -------------------------------------------------------------
+    // Test Group 17: Winget update matching (F11)
+    // -------------------------------------------------------------
+    std::cout << "\n[Test Group 17: Winget update matching]\n";
+    test("'go' must not match Google Chrome entry",
+         !lazyenv::Installer::wingetEntryMatches("go", "Go",
+             "", "Google.Chrome", "Google Chrome"));
+    test("'go' matches GoLang.Go via id segment",
+         lazyenv::Installer::wingetEntryMatches("go", "Go",
+             "", "GoLang.Go", "Go"));
+    test("exact package id wins",
+         lazyenv::Installer::wingetEntryMatches("python", "Python",
+             "python.python.3.12", "Python.Python.3.12", "Python 3.12"));
+    test("exact name match",
+         lazyenv::Installer::wingetEntryMatches("git", "Git", "", "Git.Git", "Git"));
     std::cout << "\n=============================================================\n";
     std::cout << "Test Summary: " << g_passed << " passed, " << g_failed << " failed\n";
     std::cout << "=============================================================\n";
