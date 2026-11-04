@@ -3498,7 +3498,7 @@
                         cHtml += '<button class="btn btn--sm btn-fix-alias btn-switch-active" data-tool="' + esc(firstC.command) + '" data-path="' + esc(firstC.shadowedPath) + '">' + esc(t("doctor.btnFixAlias")) + '</button>';
                     }
 
-                    cHtml += '<button class="btn btn--sm btn-open-official-doc" data-url="' + esc(getOfficialDocUrl(key)) + '" title="在默认浏览器中打开官方权威技术手册">' + esc(t("doctor.btnOfficialDoc")) + '</button>';
+                    cHtml += '<button class="btn btn--sm btn-open-official-doc" data-eco="' + esc(key) + '" data-url="' + esc(getOfficialDocUrl(key)) + '" title="在默认浏览器中打开官方权威技术手册">' + esc(t("doctor.btnOfficialDoc")) + '</button>';
 
                     cHtml += '</div></div>';
                 });

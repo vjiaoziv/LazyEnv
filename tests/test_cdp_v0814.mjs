@@ -137,19 +137,25 @@ async function run() {
         (function() {
           var docBtns = document.querySelectorAll(".btn-open-official-doc");
           var urls = Array.from(docBtns).map(b => b.getAttribute("data-url"));
+          var ecos = Array.from(docBtns).map(b => (b.getAttribute("data-eco") || "").toLowerCase());
           return {
             count: docBtns.length,
             urls: urls,
-            hasPythonDoc: urls.some(u => u.includes("python.org")),
-            hasJavaDoc: urls.some(u => u.includes("oracle.com"))
+            ecos: ecos,
+            allHttps: urls.length > 0 && urls.every(u => !!u && u.indexOf("https://") === 0),
+            hasPythonEco: ecos.some(e => e.indexOf("python") >= 0),
+            hasJavaEco: ecos.some(e => e.indexOf("java") >= 0),
+            hasPythonDoc: urls.some(u => u && u.indexOf("python.org") >= 0),
+            hasJavaDoc: urls.some(u => u && u.indexOf("oracle.com") >= 0)
           };
         })()
       `
     });
     const docData = docRes?.result?.value || {};
     test("Official Docs buttons rendered in conflict cards", docData.count > 0, `Count: ${docData.count}`);
-    test("Python official doc URL linked correctly", docData.hasPythonDoc);
-    test("Java official doc URL linked correctly", docData.hasJavaDoc);
+    test("All official doc URLs are valid https links", docData.allHttps, `urls=${JSON.stringify(docData.urls)}`);
+    test("Python conflict (when present) links to python.org", !docData.hasPythonEco || docData.hasPythonDoc, `ecos=${(docData.ecos || []).join(",")}`);
+    test("Java conflict (when present) links to oracle.com", !docData.hasJavaEco || docData.hasJavaDoc, `ecos=${(docData.ecos || []).join(",")}`);
 
     // Test 4: Path Purpose Explanations, Core Lock, & Copy Button
     console.log("\n[Test 4: Explorer Rows - 30+ Software Recognition, Purpose & Copy Button]");
