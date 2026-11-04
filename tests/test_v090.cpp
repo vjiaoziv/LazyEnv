@@ -572,6 +572,17 @@ int main() {
          lazyenv::RollbackManager::isCriticalEnvVar("ProgramFiles(x86)"));
     test("Ordinary var not protected",
          !lazyenv::RollbackManager::isCriticalEnvVar("MY_TOOL_HOME"));
+
+    // -------------------------------------------------------------
+    // Test Group 19: autoClean success logic (F13)
+    // -------------------------------------------------------------
+    std::cout << "\n[Test Group 19: autoClean success logic]\n";
+    test("User-clean-disabled does not fail overall",
+         lazyenv::PathDoctor::computeAutoCleanSuccess(false, true, false, true, false, true));
+    test("Requested clean that failed reports failure",
+         !lazyenv::PathDoctor::computeAutoCleanSuccess(true, true, false, true, false, true));
+    test("No changes reports success",
+         lazyenv::PathDoctor::computeAutoCleanSuccess(true, false, false, true, false, false));
     std::cout << "\n=============================================================\n";
     std::cout << "Test Summary: " << g_passed << " passed, " << g_failed << " failed\n";
     std::cout << "=============================================================\n";

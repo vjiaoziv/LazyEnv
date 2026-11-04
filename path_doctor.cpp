@@ -236,6 +236,11 @@ PathDoctorReport PathDoctor::diagnose() {
     return report;
 }
 
+bool PathDoctor::computeAutoCleanSuccess(bool cleanUser, bool userChanged, bool userCleaned,
+                                         bool cleanSystem, bool sysChanged, bool sysCleaned) {
+    return (!cleanUser   || !userChanged   || userCleaned) &&
+           (!cleanSystem || !sysChanged    || sysCleaned);
+}
 AutoCleanResult PathDoctor::autoClean(bool cleanUser, bool cleanSystem, RollbackManager& rollback) {
     AutoCleanResult result;
 
@@ -340,8 +345,8 @@ AutoCleanResult PathDoctor::autoClean(bool cleanUser, bool cleanSystem, Rollback
         }
     }
 
-    result.success = (userChanged ? result.userCleaned : true) &&
-                     ((cleanSystem && sysChanged) ? result.systemCleaned : true);
+    result.success = computeAutoCleanSuccess(cleanUser, userChanged, result.userCleaned,
+                                             cleanSystem, sysChanged, result.systemCleaned);
 
     if (result.userCleaned || result.systemCleaned) {
         RollbackManager::broadcastEnvironmentChange();
