@@ -2297,6 +2297,18 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, LPWSTR, int nCmdShow) {
     // Enable Per-Monitor DPI awareness (v2)
     SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
 
+    // Single-instance guard: a second launch focuses the first window instead
+    // of fighting over the same WebView2 user data folder.
+    HANDLE hSingle = CreateMutexW(nullptr, FALSE, L"LazyEnv.SingleInstance");
+    if (hSingle && GetLastError() == ERROR_ALREADY_EXISTS) {
+        if (HWND existing = FindWindowW(kWindowClass, nullptr)) {
+            if (IsIconic(existing)) ShowWindow(existing, SW_RESTORE);
+            SetForegroundWindow(existing);
+        }
+        if (hSingle) CloseHandle(hSingle);
+        return 0;
+    }
+
     // Initialize COM
     CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
 
@@ -2364,6 +2376,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, LPWSTR, int nCmdShow) {
     }
 
     CoUninitialize();
+    if (hSingle) CloseHandle(hSingle);
     return static_cast<int>(msg.wParam);
 }
 
