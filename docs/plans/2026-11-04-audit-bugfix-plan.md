@@ -50,15 +50,15 @@ AGENTS.md 的 `.bak_YYYYMMDD` 强制备份铁律仅适用于 docx/xlsx/pptx/pdf 
 
 | 任务 | 发现 | 优先级 | 内容 | 状态 |
 |---|---|---|---|---|
-| T0.1 | - | 准备 | 建分支 + 提交本计划 | [ ] |
-| T0.2 | - | 准备 | 基线测试复跑记录 | [ ] |
-| T1 | F1 | P0 | 快照捕获 ERROR_MORE_DATA 截断修复 | [ ] |
-| T2 | F2 | P0 | 恢复不丢非字符串值 + 空快照拒绝 | [ ] |
-| T3 | F3 | P0 | recipe 路径白名单（堵任意写入） | [ ] |
-| T4a | F4 | P0 | shell 输入校验三件套 + 单测 | [ ] |
-| T4b | F4 | P0 | C++ 侧 8 个调用点接入校验 | [ ] |
-| T4c | F4 | P0 | recipe 部署侧接入校验 | [ ] |
-| T5 | F5 | P0 | 两处数据竞争加锁 + 并发压测 | [ ] |
+| T0.1 |||| [x] |
+| T0.2 |||| [x] |
+| T1 |||| [x] |
+| T2 |||| [x] |
+| T3 |||| [x] |
+| T4a |||| [x] |
+| T4b |||| [x] |
+| T4c |||| [x] |
+| T5 |||| [x] |
 | T6 | F6 | P1 | spawnGuarded 统一线程异常防护（8 处） | [ ] |
 | T7 | F7 | P1 | g_lastImportedRecipe 加锁 | [ ] |
 | T8 | F10 | P1 | webview_host 异常 JSON 转义 | [ ] |
@@ -1357,6 +1357,16 @@ Select-String -Path main.cpp -Pattern 'if \(action =='    # 数量应比基线�
 10. 更新本计划 §1 状态栏全部 [x]；写明任何"未复现/降级处理"项；向用户交付报告（做了什么/依据什么/验证了什么/结果如何/未完成/风险）
 
 ---
+
+
+## 1.1 事故记录 F24（执行期间发生，已处置）
+
+- **现象**: 2026-11-04 18:18-18:23 间，HKCU\Environment 被整组破坏（36 用户变量丢失，Path 被清空/替换），CDP doctor 从 50 行跌到 20 行。
+- **取证**: 215 个历史快照做时间线 diff；确定损坏窗口 = T3-failfirst 运行的 G11-G15；当前代码重复运行**不复现**（疑似一次性竞态）。
+- **处置**: ①从会话前纯净快照 a141843a 用真 JSON 解析器全量恢复 36/36（最终审计: 0 缺失/0 差异/0 控制字符/0 多余，raw Path=1223/30条）；②恢复脚本 v1 曾因手写反转义（大小写不敏感 `\t`→TAB）二次破坏 Path/TEMP/TMP，已用 ConvertFrom-Json 重写修复；③备份留存: `%LOCALAPPDATA%\LazyEnv\HKCU_env_backup_before_recovery.json`。
+- **产品加固（已提交 ebe7ce0）**: createSnapshot 拒绝空 user_env；restore 拒绝"快照无 Path 而当前有 Path"；PathDoctor 5 处"绝不写空 PATH"（addPath/removePath/reorder/switch/autoClean）。
+- **测试加固**: G12 DWORD 清理改 KEY_SET_VALUE（原 KEY_READ 静默失败=残留根因）；新增 G16 全套件 HKCU 值数守恒断言。
+- **注意**: PowerShell `Get-ItemProperty` 对 REG_EXPAND_SZ 默认展开——校验原始值必须用 `RegistryKey.GetValue(..., DoNotExpandEnvironmentNames)`。
 
 ## 2. 明确不修清单（防范围蔓延）
 
