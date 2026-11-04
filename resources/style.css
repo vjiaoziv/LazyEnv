@@ -2046,6 +2046,7 @@ textarea.input {
 .config-item-chip__cat--git { background: rgba(240, 80, 50, 0.2); color: #f05032; }
 .config-item-chip__cat--npm { background: rgba(203, 56, 55, 0.2); color: #cb3837; }
 .config-item-chip__cat--pip { background: rgba(55, 115, 165, 0.2); color: #3773a5; }
+.config-item-chip__cat--conda { background: rgba(68, 184, 126, 0.2); color: #44b87e; }
 .config-item-chip__cat--ide { background: rgba(0, 122, 204, 0.2); color: #007acc; }
 .config-item-chip__cat--agent { background: rgba(16, 185, 129, 0.2); color: #10b981; }
 .config-item-chip__cat--cargo { background: rgba(222, 165, 132, 0.2); color: #dea584; }

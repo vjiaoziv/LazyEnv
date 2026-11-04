@@ -1124,7 +1124,7 @@ std::vector<RecipeConfigFile> RecipeManager::discoverCurrentConfigFiles() {
 
         if (!content.empty()) {
 
-            results.push_back({ "pip", "Conda Config (.condarc)", ".condarc", "%USERPROFILE%", content });
+            results.push_back({ "conda", "Conda Config (.condarc)", ".condarc", "%USERPROFILE%", content });
 
         }
 
