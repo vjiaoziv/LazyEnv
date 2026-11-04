@@ -33,6 +33,8 @@
 #include <format>
 #include <cstdio>
 #include <mutex>
+#include <cctype>
+#include <unordered_set>
 
 // ---------------------------------------------------------------------------
 // Minimal JSON helpers (no external dependency)
@@ -243,6 +245,12 @@ std::vector<lazyenv::SnapshotEntry> parseEntryArray(const std::string& json,
     return entries;
 }
 
+static std::string toLowerCopy(std::string s) {
+    for (auto& c : s)
+        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    return s;
+}
+
 std::wstring utf8ToWide(const std::string& s) {
     if (s.empty()) return {};
     int len = MultiByteToWideChar(CP_UTF8, 0, s.data(),
@@ -358,17 +366,32 @@ bool RollbackManager::restoreRegistryKey(
     if (RegOpenKeyExW(root, subkey, 0, access, &hKey) != ERROR_SUCCESS)
         return false;
 
-    // Step 1: delete all existing values
+    // Step 1: delete only STRING values that the snapshot does not carry.
+    // Non-string values (REG_DWORD etc.) cannot be represented in
+    // SnapshotEntry::value; deleting them and failing to rewrite them would
+    // silently destroy them, so they are left untouched instead.
+    std::unordered_set<std::string> wanted;
+    for (const auto& e : entries) wanted.insert(toLowerCopy(e.name));
+
     std::vector<std::wstring> existing;
     {
         DWORD idx = 0;
-        wchar_t buf[32767];
+        wchar_t buf[16384];
         while (true) {
-            DWORD len = sizeof(buf) / sizeof(wchar_t);
-            if (RegEnumValueW(hKey, idx, buf, &len,
-                              nullptr, nullptr, nullptr, nullptr) != ERROR_SUCCESS)
-                break;
-            existing.emplace_back(buf, len);
+            DWORD len = static_cast<DWORD>(std::size(buf));
+            LONG rc = RegEnumValueW(hKey, idx, buf, &len,
+                                    nullptr, nullptr, nullptr, nullptr);
+            if (rc == ERROR_MORE_DATA) { ++idx; continue; }
+            if (rc != ERROR_SUCCESS) break;   // ERROR_NO_MORE_ITEMS (259) = end
+            if (rc != ERROR_SUCCESS) break;
+
+            DWORD type = 0, cb = 0;
+            if (RegQueryValueExW(hKey, buf, nullptr, &type, nullptr, &cb) == ERROR_SUCCESS
+                && (type == REG_SZ || type == REG_EXPAND_SZ)) {
+                std::string nm = toLowerCopy(wideToUtf8(std::wstring(buf, len)));
+                if (wanted.find(nm) == wanted.end())
+                    existing.emplace_back(buf, len);
+            }
             ++idx;
         }
     }
@@ -376,8 +399,9 @@ bool RollbackManager::restoreRegistryKey(
         RegDeleteValueW(hKey, name.c_str());
     }
 
-    // Step 2: write snapshot values
+    // Step 2: write snapshot values (string entries only)
     for (auto& e : entries) {
+        if (e.type != REG_SZ && e.type != REG_EXPAND_SZ) continue;
         std::wstring wname = utf8ToWide(e.name);
         std::wstring wval  = utf8ToWide(e.value);
         DWORD dataSize = static_cast<DWORD>((wval.size() + 1) * sizeof(wchar_t));
@@ -492,6 +516,10 @@ bool RollbackManager::restoreSnapshot(const std::string& snapshotId) {
     if (!std::filesystem::exists(path)) return false;
 
     Snapshot snap = loadSnapshot(path);
+    if (snap.id.empty() || snap.timestamp.empty()) return false;
+    // An empty user_env snapshot would wipe the whole user environment on
+    // restore; refuse it as corrupt instead of destroying data.
+    if (snap.user_env.empty()) return false;
 
     // Restore user environment
     if (!restoreRegistryKey(snap.user_env, false))

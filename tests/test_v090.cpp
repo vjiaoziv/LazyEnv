@@ -353,6 +353,48 @@ int main() {
             RegCloseKey(k);
         }
     }
+
+    // -------------------------------------------------------------
+    // Test Group 12: Restore preserves non-string values + empty guard (F2)
+    // -------------------------------------------------------------
+    std::cout << "\n[Test Group 12: Restore preserves non-string values + empty guard]\n";
+    {
+        // (a) DWORD must survive a restore round-trip
+        HKEY k = nullptr;
+        DWORD dv = 42;
+        if (RegOpenKeyExW(HKEY_CURRENT_USER, L"Environment", 0, KEY_SET_VALUE, &k) == ERROR_SUCCESS) {
+            RegSetValueExW(k, L"LazyEnvTestDword", 0, REG_DWORD,
+                           reinterpret_cast<const BYTE*>(&dv), sizeof(dv));
+            RegCloseKey(k);
+        }
+        lazyenv::RollbackManager rb;
+        std::string sid = rb.createSnapshot("F2 dword");
+        test("snapshot with DWORD value created", !sid.empty());
+        bool restoredOk = !sid.empty() && rb.restoreSnapshot(sid);
+        test("restoreSnapshot succeeds", restoredOk);
+        DWORD got = 0; DWORD sz = sizeof(got); DWORD typ = 0; bool present = false;
+        if (RegOpenKeyExW(HKEY_CURRENT_USER, L"Environment", 0, KEY_READ, &k) == ERROR_SUCCESS) {
+            if (RegQueryValueExW(k, L"LazyEnvTestDword", nullptr, &typ,
+                                 reinterpret_cast<BYTE*>(&got), &sz) == ERROR_SUCCESS
+                && typ == REG_DWORD && got == 42) present = true;
+            RegDeleteValueW(k, L"LazyEnvTestDword");
+            RegCloseKey(k);
+        }
+        test("DWORD value survives restore", present);
+        if (!sid.empty()) rb.deleteSnapshot(sid);
+
+        // (b) an empty user_env snapshot must be refused (would wipe env)
+        lazyenv::RollbackManager rb2;
+        std::string eid = "f2-empty-snapshot-test";
+        {
+            std::ofstream ef(rb2.getStorageDir() / (eid + ".json"), std::ios::trunc);
+            ef << "{\n  \"id\": \"" << eid << "\",\n  \"timestamp\": \"2026-11-04T00:00:00\",\n"
+               << "  \"description\": \"empty\",\n  \"user_env\": [],\n  \"system_env\": []\n}\n";
+        }
+        bool emptyRestored = rb2.restoreSnapshot(eid);
+        test("Empty snapshot restore is refused", !emptyRestored);
+        rb2.deleteSnapshot(eid);
+    }
     std::cout << "\n=============================================================\n";
     std::cout << "Test Summary: " << g_passed << " passed, " << g_failed << " failed\n";
     std::cout << "=============================================================\n";
