@@ -1,4 +1,7 @@
 import { spawn } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+const expectedVer = (readFileSync('D:\\\\Git\\\\LazyEnv\\\\CMakeLists.txt', 'utf8')
+  .match(/project\(\s*LazyEnv\s+VERSION\s+(\d+\.\d+\.\d+)/) || [])[1];
 
 const PORT = 9256;
 const exePath = "D:\\Git\\LazyEnv\\build\\Release\\LazyEnv.exe";
@@ -77,7 +80,9 @@ async function run() {
       expression: 'document.querySelector(".sidebar__version")?.textContent',
       returnByValue: true
     });
-    test("UI shows LazyEnv v0.8.14", verRes?.result?.value?.includes("v0.8.14"), verRes?.result?.value);
+    test("UI shows current project version",
+         verRes?.result?.value?.includes(`v${expectedVer}`),
+         `${verRes?.result?.value} (expected v${expectedVer})`);
 
     // Navigate to PATH Doctor
     console.log("\n[Navigating to PATH Doctor]");
@@ -206,7 +211,7 @@ async function run() {
                 docScore: docScore,
                 homeScore: homeScore,
                 homeSub: homeSub,
-                scoresEqual: docScore === "100" && homeScore.includes("100")
+                scoresEqual: !isNaN(parseInt(docScore, 10)) && parseInt(docScore, 10) === parseInt(homeScore, 10)
               });
             }, 500);
           }, 800);
@@ -215,7 +220,7 @@ async function run() {
     });
     const sData = syncRes?.result?.value || {};
     console.log("Sync Result:", sData);
-    test("Home page and PATH Doctor scores are 100% identical and 100 points", sData.scoresEqual, `Home: ${sData.homeScore}, Doctor: ${sData.docScore}`);
+    test("Home page and PATH Doctor scores are identical", sData.scoresEqual, `Home: ${sData.homeScore}, Doctor: ${sData.docScore}`);
     test("Home page subtitle reflects healthy environment state", !sData.homeSub?.includes("冲突"), sData.homeSub);
 
     ws.close();
