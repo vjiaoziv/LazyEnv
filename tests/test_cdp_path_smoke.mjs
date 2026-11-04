@@ -1,7 +1,10 @@
 import { spawn } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
+const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 import { cpSync, rmSync } from 'node:fs';
-const SRC = 'D:\\Git\\LazyEnv\\build\\Release';
-const DIR = 'D:\\Git\\LazyEnv 测试%#';
+const SRC = join(ROOT, 'build', 'Release');
+const DIR = join(ROOT, 'build', 'smoke 测试%#');
 const PORT = 9258;
 rmSync(DIR, { recursive: true, force: true });
 cpSync(SRC, DIR, { recursive: true });

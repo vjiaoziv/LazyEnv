@@ -1,10 +1,13 @@
 import { spawn } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
+const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 import { readFileSync } from 'node:fs';
-const expectedVer = (readFileSync('D:\\\\Git\\\\LazyEnv\\\\CMakeLists.txt', 'utf8')
+const expectedVer = (readFileSync(join(ROOT, 'CMakeLists.txt'), 'utf8')
   .match(/project\(\s*LazyEnv\s+VERSION\s+(\d+\.\d+\.\d+)/) || [])[1];
 
 const PORT = 9256;
-const exePath = "D:\\Git\\LazyEnv\\build\\Release\\LazyEnv.exe";
+const exePath = join(ROOT, 'build', 'Release', 'LazyEnv.exe');
 console.log("=== Launching LazyEnv for v0.8.14 Comprehensive CDP E2E Testing ===");
 
 const proc = spawn(exePath, [], {

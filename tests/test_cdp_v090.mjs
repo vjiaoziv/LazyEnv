@@ -1,7 +1,10 @@
 import { spawn } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
+const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 
 const PORT = 9257;
-const exePath = "D:\\Git\\LazyEnv\\build\\Release\\LazyEnv.exe";
+const exePath = join(ROOT, 'build', 'Release', 'LazyEnv.exe');
 console.log("=== Launching LazyEnv for v0.9.0 Comprehensive Migration Hub CDP E2E Testing ===");
 
 const proc = spawn(exePath, [], {

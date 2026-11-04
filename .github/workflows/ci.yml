@@ -22,6 +22,25 @@ jobs:
       - name: Build
         run: cmake --build build --config Release --parallel
 
+      - name: Unit tests
+        shell: pwsh
+        run: |
+          ./build/Release/test_v0814.exe
+          if ($LASTEXITCODE -ne 0) { throw "test_v0814 failed: $LASTEXITCODE" }
+          ./build/Release/test_v090.exe
+          if ($LASTEXITCODE -ne 0) { throw "test_v090 failed: $LASTEXITCODE" }
+
+      - name: E2E tests (CDP)
+        shell: pwsh
+        run: |
+          node --version
+          node tests/test_cdp_v090.mjs
+          if ($LASTEXITCODE -ne 0) { throw "cdp v090 failed" }
+          node tests/test_cdp_v0814.mjs
+          if ($LASTEXITCODE -ne 0) { throw "cdp v0814 failed" }
+          node tests/test_cdp_path_smoke.mjs
+          if ($LASTEXITCODE -ne 0) { throw "path smoke failed" }
+
       - name: Smoke check
         shell: pwsh
         run: |
