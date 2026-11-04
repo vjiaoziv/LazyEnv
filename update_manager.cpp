@@ -7,6 +7,7 @@
 // (at your option) any later version.
 
 #include "update_manager.h"
+#include "installer.h"   // isSafePackageId (F21c)
 #include <ShlObj.h>
 #include <future>
 #include <fstream>
@@ -214,6 +215,8 @@ BatchUpgradeSummary UpdateManager::upgradeBatch(
 
 bool UpdateManager::setPackagePinned(const std::string& packageId, bool pinned) {
     if (packageId.empty()) return false;
+    // Reject ids that could corrupt the persisted JSON file (quotes/backslashes)
+    if (!Installer::isSafePackageId(packageId)) return false;
     if (pinned) {
         pinnedPackages_.insert(packageId);
     } else {
