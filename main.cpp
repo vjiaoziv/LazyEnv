@@ -659,7 +659,12 @@ std::string handleWebMessage(const std::string& message) {
         std::string cmd = extractJsonValue(message, "command");
         std::string cat = extractJsonValue(message, "category");
         if (cat.empty()) cat = "other";
-
+        if (!lazyenv::Installer::isSafeShellToken(cmd)) {
+            return std::format(
+                "{{\"action\":\"probeResult\",\"found\":false,"
+                "\"command\":\"{}\",\"message\":\"Unsafe characters in command.\"}}",
+                jsonEscape(cmd));
+        }
         std::thread([cmd, cat]() {
             try {
                 std::string result = probeCommand(cmd, cat);
@@ -674,7 +679,9 @@ std::string handleWebMessage(const std::string& message) {
         std::string cmdName = extractJsonValue(message, "command");
         std::string displayName = extractJsonValue(message, "name");
         if (displayName.empty()) displayName = cmdName;
-
+        if (!lazyenv::Installer::isSafeShellToken(displayName)) {
+            return "{\"action\":\"uninstallResult\",\"success\":false}";
+        }
         std::thread([cmdName, displayName]() {
             try {
                 std::string wingetId;
@@ -1402,7 +1409,9 @@ std::string handleWebMessage(const std::string& message) {
     if (action == "setMirrorSource") {
         std::string type = extractJsonValue(message, "type");
         std::string url  = extractJsonValue(message, "url");
-        std::thread([type, url]() {
+        if (!lazyenv::Installer::isSafeMirrorUrl(url)) {
+            return "{\"action\":\"mirrorSourceSetResult\",\"success\":false}";
+        }        std::thread([type, url]() {
             try {
                 std::string out;
                 int rc = -1;
@@ -1644,10 +1653,19 @@ std::string handleWebMessage(const std::string& message) {
                     pkg.id = id;
                     pkg.displayName = id;
                 }
+                if (!lazyenv::Installer::isSafePackageId(pkg.id)) {
+                    // Never embed an unvalidated id into the winget command line.
+                    g_webview.postMessage(std::format(
+                        "{{\"action\":\"installProgress\",\"packageId\":\"{}\","
+                        "\"status\":\"failed\",\"message\":\"Unsafe package id\","
+                        "\"current\":{},\"total\":{}}}",
+                        jsonEscape(id), current + 1, total));
+                    ++current;
+                    continue;
+                }
 
                 std::string cmdLine = std::format(
-                    "{} install --id {} --exact --silent "
-                    "--accept-package-agreements --accept-source-agreements",
+                    "{} install --id {} --exact --silent "                    "--accept-package-agreements --accept-source-agreements",
                     lazyenv::Installer::getWingetExecutable(),
                     pkg.id);
 
@@ -1731,10 +1749,16 @@ std::string handleWebMessage(const std::string& message) {
                 pkg.id = id;
                 pkg.displayName = id;
             }
+            if (!lazyenv::Installer::isSafePackageId(pkg.id)) {
+                g_webview.postMessage(std::format(
+                    "{{\"action\":\"installProgress\",\"packageId\":\"{}\","
+                    "\"status\":\"failed\",\"message\":\"Unsafe package id\"}}",
+                    jsonEscape(id)));
+                return;
+            }
 
             std::string cmdLine = std::format(
-                "{} install --id {} --exact --silent "
-                "--accept-package-agreements --accept-source-agreements",
+                "{} install --id {} --exact --silent "                "--accept-package-agreements --accept-source-agreements",
                 lazyenv::Installer::getWingetExecutable(),
                 pkg.id);
 

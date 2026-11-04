@@ -203,7 +203,12 @@ InstallResult Installer::installPackage(const PackageInfo& pkg) {
     InstallResult result;
     result.packageId = pkg.id;
     result.status    = InstallStatus::Running;
-
+    if (!isSafePackageId(pkg.id)) {
+        result.status   = InstallStatus::Failed;
+        result.exitCode = -1;
+        result.output   = "Unsafe package id";
+        return result;
+    }
     if (progressCb_)
         progressCb_(pkg.id, InstallStatus::Running,
                     "Installing " + pkg.displayName + "...");
@@ -393,7 +398,13 @@ InstallResult Installer::upgradeEnvironment(const std::string& command,
     InstallResult result;
     result.packageId = packageId.empty() ? command : packageId;
     result.status    = InstallStatus::Running;
-
+    if ((!packageId.empty() && !isSafePackageId(packageId)) ||
+        (!displayName.empty() && !isSafeShellToken(displayName))) {
+        result.status   = InstallStatus::Failed;
+        result.exitCode = -1;
+        result.output   = "Unsafe package id or display name";
+        return result;
+    }
     if (progressCb_)
         progressCb_(result.packageId, InstallStatus::Running,
                     "Upgrading " + displayName + "...");
