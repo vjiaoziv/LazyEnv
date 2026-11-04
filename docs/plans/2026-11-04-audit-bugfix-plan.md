@@ -59,28 +59,28 @@ AGENTS.md 的 `.bak_YYYYMMDD` 强制备份铁律仅适用于 docx/xlsx/pptx/pdf 
 | T4b |||| [x] |
 | T4c |||| [x] |
 | T5 |||| [x] |
-| T6 | F6 | P1 | spawnGuarded 统一线程异常防护（8 处） | [ ] |
-| T7 | F7 | P1 | g_lastImportedRecipe 加锁 | [ ] |
-| T8 | F10 | P1 | webview_host 异常 JSON 转义 | [ ] |
-| T9 | F16 | P1 | restoreSnapshot 移到后台线程 | [ ] |
-| T10 | F17 | P1 | 单实例保护 | [ ] |
-| T11 | F9 | P1 | file URI 百分号编码 + 新增路径冒烟 E2E | [ ] |
-| T12 | F8 | P1 | openUrl 改 ShellExecuteW + scheme 白名单 | [ ] |
-| T13 | F11 | P2 | winget 更新匹配收紧（去子串误报） | [ ] |
-| T14 | F12 | P2 | 关键环境变量删除保护扩展 | [ ] |
-| T15 | F13 | P2 | autoClean 成功判定修复 | [ ] |
-| T16 | F14 | P2 | switchActiveVersion 三处修复 | [ ] |
-| T17 | F15 | P2 | 配置导出秘钥脱敏 | [ ] |
-| T18 | F18 | P2 | 修 test_cdp_v0814 两个错误断言 | [ ] |
-| T19 | F19 | P2 | CI 接入测试 | [ ] |
-| T20 | F20 | P2 | 删 6 个死处理器 + 4 个死 case + 修误导 toast | [ ] |
-| T21 | F21a | P3 | extractJsonValue 支持 \uXXXX | [ ] |
-| T22 | F21b | P3 | main.cpp 数组解析改括号配对 | [ ] |
-| T23 | F21c | P3 | setPackagePinned 校验 id | [ ] |
-| T24 | F22 | P3 | GetEnvironmentVariableW 上界检查 | [ ] |
-| T25 | F23a-d | P3 | 4 个小正确性修复 | [ ] |
-| T26 | F23c | P3 | 命令超时杀进程树（Job Object） | [ ] |
-| T27 | 全部 | 验收 | 全量回归 + diff 复查 + 交付报告 | [ ] |
+| T6 |||| [x] |
+| T7 |||| [x] |
+| T8 |||| [x] |
+| T9 |||| [x] |
+| T10 |||| [x] |
+| T11 |||| [x] |
+| T12 |||| [x] |
+| T13 |||| [x] |
+| T14 |||| [x] |
+| T15 |||| [x] |
+| T16 |||| [x] |
+| T17 |||| [x] |
+| T18 |||| [x] |
+| T19 |||| [x] |
+| T20 |||| [x] |
+| T21 |||| [x] |
+| T22 |||| [x] |
+| T23 |||| [x] |
+| T24 |||| [x] |
+| T25 |||| [x] |
+| T26 |||| [x] |
+| T27 |||| [x] |
 
 ---
 
@@ -1368,6 +1368,20 @@ Select-String -Path main.cpp -Pattern 'if \(action =='    # 数量应比基线�
 - **测试加固**: G12 DWORD 清理改 KEY_SET_VALUE（原 KEY_READ 静默失败=残留根因）；新增 G16 全套件 HKCU 值数守恒断言。
 - **注意**: PowerShell `Get-ItemProperty` 对 REG_EXPAND_SZ 默认展开——校验原始值必须用 `RegistryKey.GetValue(..., DoNotExpandEnvironmentNames)`。
 
+
+## 1.2 完成记录（T27 验收，2026-11-04）
+
+- **最终验证**: build exit 0；test_v0814 26/0；test_v090 **68/0**（基线 37 + 新增 Group 11-22 共 31 条）；test_cdp_v090 15/0；test_cdp_v0814 **13/0**（基线 11/2，两个过期断言已修）；test_cdp_path_smoke PASS（T11 新增）。
+- **提交**: 34 个提交（`9fc074e`..`f847758`），每任务一个，父链自 `2f1b5cc`。
+- **改动面**: 21 文件 +2477/-265，与计划清单一致，无范围蔓延（`git diff 2f1b5cc --stat` 核对）。
+- **静态复扫**: 15 处 `std::thread` 全部带防护；11 个 shell 命令构造点全部有上游校验；`if (action ==` 49→43（-6，死处理器删除数精确匹配）。
+- **偏离与降级记录**:
+  1. F24 环境清空事故的原始触发竞争**未能稳定复现**（当前代码重复运行不触发）——按计划降级为"防御加固（ebe7ce0）+ 全套件值数守恒断言（G16）+ 恢复"，未找到唯一根因函数，风险由新守恒断言持续监控。
+  2. test_cdp_v090 观察到 2 次固定 sleep 时序抖动（重跑即绿）——CI 若复现按计划回退预案给 E2E 步骤加 `continue-on-error: true`。
+  3. T19 的 CI 效果需推送后在 Actions 观察首跑（本机已验证全部测试步骤可独立通过）。
+  4. 执行中新增范围：F24 相关修复与 G16 断言为计划外但事故处置必需；T4b 顺带补齐 scoop/npm/pip provider 三处同类缺口（超出 8 点清单，属 F4 同一目标）。
+  5. 测试辅助期间修复的测试自身缺陷：G5 改用白名单宏（T3 连带）、G12 DWORD 清理 KEY_SET_VALUE、G11 文件锁关闭——均已随对应任务提交。
+
 ## 2. 明确不修清单（防范围蔓延）
 
 | 项 | 决定 | 理由 |
@@ -1393,7 +1407,7 @@ Select-String -Path main.cpp -Pattern 'if \(action =='    # 数量应比基线�
 
 | 项 | 基线结果 | 备注 |
 |---|---|---|
-| build | （待填） | |
+| build | exit 0（无警告） | 2026-11-04 T0.2 复跑确认 |
 | test_v0814 | 26 passed / 0 failed | 2026-11-04 已预跑确认 |
 | test_v090 | 37 passed / 0 failed | 2026-11-04 已预跑确认 |
 | test_cdp_v090 | 15 passed / 0 failed | 2026-11-04 已预跑确认 |
