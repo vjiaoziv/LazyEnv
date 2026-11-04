@@ -30,6 +30,7 @@
 #include <unordered_map>
 #include <mutex>
 #include <cctype>
+#include <cstring>
 
 namespace lazyenv {
 
@@ -594,6 +595,38 @@ bool Installer::removeFromUserPath(const std::string& directory) {
     return ok;
 }
 
+bool Installer::isSafePackageId(const std::string& id) {
+    if (id.empty() || id.size() > 200) return false;
+    for (unsigned char c : id) {
+        if (!(std::isalnum(c) || c == '.' || c == '_' || c == '-' ||
+              c == '/' || c == '@' || c == '+'))
+            return false;
+    }
+    return true;
+}
+
+bool Installer::isSafeMirrorUrl(const std::string& url) {
+    auto hasPrefix = [&](const char* p) { return url.rfind(p, 0) == 0; };
+    if (!hasPrefix("http://") && !hasPrefix("https://")) return false;
+    if (url.size() > 500) return false;
+    for (unsigned char c : url) {
+        if (c < 0x20 || c == 0x7F) return false;
+        // '%' would let cmd expand %VAR% even inside quotes; quotes/backticks
+        // break out of the quoting entirely.
+        if (c == '"' || c == '%' || c == '`') return false;
+        if (!(std::isalnum(c) || strchr("._~:/?#=@!$&'()*+,;-", c))) return false;
+    }
+    return true;
+}
+
+bool Installer::isSafeShellToken(const std::string& s) {
+    if (s.empty() || s.size() > 300) return false;
+    for (unsigned char c : s) {
+        if (c < 0x20 || c == 0x7F) return false;
+        if (strchr("&|<>^%\"!`", c)) return false;
+    }
+    return true;   // spaces are allowed: display names legitimately contain them
+}
 bool Installer::isCommandAvailable(const std::string& command) {
     if (command.empty()) return false;
     std::string output;

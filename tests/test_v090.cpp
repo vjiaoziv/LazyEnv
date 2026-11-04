@@ -450,6 +450,27 @@ int main() {
         test("Allowed macro still restored", fs::exists(okPath));
         fs::remove(okPath);
     }
+
+    // -------------------------------------------------------------
+    // Test Group 14: Shell input validation (F4)
+    // -------------------------------------------------------------
+    std::cout << "\n[Test Group 14: Shell input validation]\n";
+    test("Safe package id accepted",
+         lazyenv::Installer::isSafePackageId("Python.Python.3.12") &&
+         lazyenv::Installer::isSafePackageId("@vue/cli"));
+    test("Unsafe package id rejected",
+         !lazyenv::Installer::isSafePackageId("x\" & calc") &&
+         !lazyenv::Installer::isSafePackageId("a|b"));
+    test("Mirror url whitelist",
+         lazyenv::Installer::isSafeMirrorUrl("https://registry.npmmirror.com") &&
+         !lazyenv::Installer::isSafeMirrorUrl("https://x.com/\"&calc") &&
+         !lazyenv::Installer::isSafeMirrorUrl("ftp://x") &&
+         !lazyenv::Installer::isSafeMirrorUrl("https://x/%PATH%"));
+    test("Shell token rejection",
+         lazyenv::Installer::isSafeShellToken("python --version") &&
+         !lazyenv::Installer::isSafeShellToken("foo & del /q C:\\*") &&
+         !lazyenv::Installer::isSafeShellToken("a\"b") &&
+         !lazyenv::Installer::isSafeShellToken("x%y"));
     std::cout << "\n=============================================================\n";
     std::cout << "Test Summary: " << g_passed << " passed, " << g_failed << " failed\n";
     std::cout << "=============================================================\n";
