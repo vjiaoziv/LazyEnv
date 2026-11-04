@@ -155,8 +155,10 @@ void Installer::setProgressCallback(ProgressCallback cb) {
 // ---------------------------------------------------------------------------
 // Resolve winget executable path or command name safely via Win32 API
 // ---------------------------------------------------------------------------
+static std::mutex s_wingetCacheMutex;   // guards the cached value (F5)
 std::string Installer::getWingetExecutable() {
     static std::string cached;
+    std::lock_guard<std::mutex> lock(s_wingetCacheMutex);
     if (!cached.empty()) return cached;
 
     // Check if winget is directly callable in PATH

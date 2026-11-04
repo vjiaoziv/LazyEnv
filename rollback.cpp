@@ -662,8 +662,10 @@ Snapshot RollbackManager::loadSnapshot(const std::filesystem::path& path) const 
 // ---------------------------------------------------------------------------
 // Utilities
 // ---------------------------------------------------------------------------
+static std::mutex s_rngMutex;   // guards the shared PRNG (F5)
 std::string RollbackManager::generateId() {
     static std::mt19937 rng(std::random_device{}());
+    std::lock_guard<std::mutex> lock(s_rngMutex);
     std::uniform_int_distribution<uint32_t> dist(0, 0xFFFFFFFF);
     return std::format("{:08x}-{:04x}-{:04x}-{:04x}-{:012x}",
                        dist(rng),

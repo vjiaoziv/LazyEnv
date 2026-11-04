@@ -10,6 +10,9 @@
 #include <string>
 #include <sstream>
 #include <algorithm>
+#include <mutex>
+#include <set>
+#include <thread>
 #include <filesystem>
 #include <fstream>
 
@@ -471,6 +474,51 @@ int main() {
          !lazyenv::Installer::isSafeShellToken("foo & del /q C:\\*") &&
          !lazyenv::Installer::isSafeShellToken("a\"b") &&
          !lazyenv::Installer::isSafeShellToken("x%y"));
+
+    // -------------------------------------------------------------
+    // Test Group 15: Concurrency guards (F5)
+    // Regression guard: data races cannot fail deterministically, so this
+    // asserts post-fix invariants (unique ids, stable cached value).
+    // -------------------------------------------------------------
+    std::cout << "\n[Test Group 15: Concurrency guards]\n";
+    {
+        std::mutex mtx;
+        std::vector<std::string> ids;
+        std::vector<std::thread> ths;
+        for (int t = 0; t < 4; t++) {
+            ths.emplace_back([&]() {
+                lazyenv::RollbackManager rb;
+                for (int i = 0; i < 50; i++) {
+                    std::string id = rb.createSnapshot("stress");
+                    if (!id.empty()) {
+                        std::lock_guard<std::mutex> lk(mtx);
+                        ids.push_back(id);
+                    }
+                }
+            });
+        }
+        for (auto& th : ths) th.join();
+        std::sort(ids.begin(), ids.end());
+        bool uniq = std::adjacent_find(ids.begin(), ids.end()) == ids.end();
+        test("Concurrent snapshot ids unique", ids.size() == 200 && uniq);
+        lazyenv::RollbackManager rbClean;
+        for (auto& id : ids) rbClean.deleteSnapshot(id);
+
+        std::mutex mtx2;
+        std::set<std::string> seen;
+        std::vector<std::thread> ths2;
+        for (int t = 0; t < 4; t++) {
+            ths2.emplace_back([&]() {
+                for (int i = 0; i < 50; i++) {
+                    std::string v = lazyenv::Installer::getWingetExecutable();
+                    std::lock_guard<std::mutex> lk(mtx2);
+                    seen.insert(v);
+                }
+            });
+        }
+        for (auto& th : ths2) th.join();
+        test("Concurrent getWingetExecutable stable", seen.size() == 1);
+    }
     std::cout << "\n=============================================================\n";
     std::cout << "Test Summary: " << g_passed << " passed, " << g_failed << " failed\n";
     std::cout << "=============================================================\n";
