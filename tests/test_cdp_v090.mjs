@@ -12,8 +12,11 @@ const proc = spawn(exePath, [], {
     ...process.env,
     WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${PORT}`
   },
-  stdio: 'ignore'
+  stdio: ['ignore', 'pipe', 'pipe']
 });
+let appOutput = '';
+proc.stdout?.on('data', d => { appOutput += d; });
+proc.stderr?.on('data', d => { appOutput += d; });
 
 async function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
@@ -32,7 +35,8 @@ async function run() {
 
   try {
     let wsUrl = null;
-    for (let i = 0; i < 25; i++) {
+    for (let i = 0; i < 75; i++) {
+      if (proc.exitCode !== null) break;
       await sleep(400);
       try {
         const res = await fetch(`http://127.0.0.1:${PORT}/json/list`);
@@ -47,7 +51,11 @@ async function run() {
       } catch (e) {}
     }
 
-    if (!wsUrl) throw new Error("Could not find WebView2 CDP endpoint");
+    if (!wsUrl) {
+      const state = proc.exitCode === null ? 'app still running (slow start?)' : `app exited code=${proc.exitCode}`;
+      const tail = appOutput ? ` | app output: ${appOutput.slice(-600)}` : '';
+      throw new Error(`Could not find WebView2 CDP endpoint (${state})${tail}`);
+    }
 
     const ws = new WebSocket(wsUrl);
     await new Promise(r => ws.onopen = r);
