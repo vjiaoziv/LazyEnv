@@ -2343,6 +2343,14 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 // WinMain
 // ---------------------------------------------------------------------------
 int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, LPWSTR, int nCmdShow) {
+    // Startup diagnostics for CI troubleshooting:
+    {
+        wchar_t a[1024] = L"<empty>";
+        DWORD n = GetEnvironmentVariableW(L"WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", a, 1024);
+        fwprintf(stderr, L"[LazyEnv DIAG] webview2-args-env=%s len=%lu\\n",
+                 (n > 0 && n < 1024) ? a : L"<unset>", n);
+        fflush(stderr);
+    }
     // Enable Per-Monitor DPI awareness (v2)
     SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
 

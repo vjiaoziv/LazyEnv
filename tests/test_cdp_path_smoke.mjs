@@ -8,6 +8,7 @@ const DIR = join(ROOT, 'build', 'smoke 测试%#');
 const PORT = 9258;
 rmSync(DIR, { recursive: true, force: true });
 cpSync(SRC, DIR, { recursive: true });
+console.log('[diag] args-env=' + (process.env.WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS || '<unset>'));
 const proc = spawn(DIR + '\\LazyEnv.exe', [], {
   env: { ...process.env, WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${PORT}` },
   stdio: ['ignore', 'pipe', 'pipe']

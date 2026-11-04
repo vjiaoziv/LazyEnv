@@ -7,6 +7,7 @@ const PORT = 9257;
 const exePath = join(ROOT, 'build', 'Release', 'LazyEnv.exe');
 console.log("=== Launching LazyEnv for v0.9.0 Comprehensive Migration Hub CDP E2E Testing ===");
 
+console.log('[diag] args-env=' + (process.env.WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS || '<unset>'));
 const proc = spawn(exePath, [], {
   env: {
     ...process.env,

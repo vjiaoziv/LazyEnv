@@ -92,10 +92,23 @@ bool WebViewHost::initialize(HWND parentWindow, const std::wstring& navigateUri)
         CoTaskMemFree(appdata);
     }
 
+    // Explicitly forward WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS through
+    // ICoreWebView2EnvironmentOptions. Relying only on the loader's implicit
+    // env-var handling proved unreliable on some hosts (the CDP debug port
+    // flag was silently dropped); passing it here is deterministic.
+    Microsoft::WRL::ComPtr<CoreWebView2EnvironmentOptions> envOptions;
+    wchar_t extraArgs[2048] = L"";
+    DWORD extraLen = GetEnvironmentVariableW(
+        L"WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", extraArgs, 2048);
+    if (extraLen > 0 && extraLen < 2048) {
+        envOptions = Microsoft::WRL::Make<CoreWebView2EnvironmentOptions>();
+        envOptions->put_AdditionalBrowserArguments(extraArgs);
+    }
+
     HRESULT hr = CreateCoreWebView2EnvironmentWithOptions(
         nullptr,
         userDataFolder.c_str(),
-        nullptr,
+        envOptions.Get(),
         Microsoft::WRL::Callback<ICoreWebView2CreateCoreWebView2EnvironmentCompletedHandler>(
             [this](HRESULT result, ICoreWebView2Environment* env) -> HRESULT {
                 if (FAILED(result) || !env) return result;
