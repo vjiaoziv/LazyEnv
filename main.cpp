@@ -935,7 +935,11 @@ std::string handleWebMessage(const std::string& message) {
 
                 g_webview.postMessage(os.str());
             } catch (...) {
-                g_webview.postMessage("{\"action\":\"upgradeBatchComplete\",\"successCount\":0,\"failCount\":1,\"total\":1,\"failures\":[]}");
+                size_t total = targets.size();
+                g_webview.postMessage(std::format(
+                    "{{\"action\":\"upgradeBatchComplete\",\"successCount\":0,"
+                    "\"failCount\":{},\"total\":{},\"failures\":[]}}",
+                    total, total));
             }
         }).detach();
         return "{\"action\":\"upgradeBatchStarted\"}";
