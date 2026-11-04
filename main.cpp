@@ -2363,6 +2363,8 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, LPWSTR, int nCmdShow) {
 
     // Check WebView2 runtime
     if (!lazyenv::WebViewHost::isRuntimeAvailable()) {
+        fwprintf(stderr, L"[LazyEnv FATAL] WebView2 runtime not available\n");
+        fflush(stderr);
         MessageBoxW(nullptr,
             L"Microsoft Edge WebView2 Runtime is required but not found.\n"
             L"Please install it from:\n"
@@ -2410,6 +2412,8 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, LPWSTR, int nCmdShow) {
     // Initialize WebView2 with file:// navigation
     g_webview.setMessageHandler(handleWebMessage);
     if (!g_webview.initialize(g_mainWindow, htmlUri)) {
+        fwprintf(stderr, L"[LazyEnv FATAL] WebView2 environment/controller initialization failed\n");
+        fflush(stderr);
         MessageBoxW(nullptr, L"Failed to initialize WebView2.", L"LazyEnv", MB_ICONERROR);
         return 1;
     }

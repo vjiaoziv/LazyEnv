@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process';
+import { spawn, execSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -54,7 +54,8 @@ async function run() {
     if (!wsUrl) {
       const state = proc.exitCode === null ? 'app still running (slow start?)' : `app exited code=${proc.exitCode}`;
       const tail = appOutput ? ` | app output: ${appOutput.slice(-600)}` : '';
-      throw new Error(`Could not find WebView2 CDP endpoint (${state})${tail}`);
+      let wv = '<n/a>'; try { wv = execSync('tasklist /FI "IMAGENAME eq msedgewebview2.exe" /NH', { encoding: 'utf8' }).trim().replace(/\r?\n/g, ' | '); } catch {}
+      throw new Error(`Could not find WebView2 CDP endpoint (${state})${tail} | webview2: ${wv}`);
     }
 
     const ws = new WebSocket(wsUrl);

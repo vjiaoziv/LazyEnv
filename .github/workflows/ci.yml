@@ -30,6 +30,18 @@ jobs:
           ./build/Release/test_v090.exe
           if ($LASTEXITCODE -ne 0) { throw "test_v090 failed: $LASTEXITCODE" }
 
+      - name: WebView2 runtime probe
+        shell: pwsh
+        run: |
+          $guid = '{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}'
+          $found = $false
+          foreach ($root in @('HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\','HKLM:\SOFTWARE\Microsoft\EdgeUpdate\Clients\','HKCU:\SOFTWARE\Microsoft\EdgeUpdate\Clients\')) {
+            $p = $root + $guid
+            if (Test-Path $p) { Write-Host "WebView2 runtime at $p => $((Get-ItemProperty $p).pv)"; $found = $true }
+          }
+          if (-not $found) { Write-Host 'WEBVIEW2 RUNTIME REGISTRY NOT FOUND' }
+          Get-Process msedgewebview2 -ErrorAction SilentlyContinue | Select-Object -First 3 | Format-Table Id,ProcessName -AutoSize
+
       - name: E2E tests (CDP)
         shell: pwsh
         run: |
