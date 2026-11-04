@@ -846,24 +846,7 @@ std::string handleWebMessage(const std::string& message) {
         return "{\"action\":\"upgradeBatchStarted\"}";
     }
 
-    // ------ Verify Command execution in real-time ------
-    if (action == "verifyCommand") {
-        std::string cmd = extractJsonValue(message, "command");
-        std::thread([cmd]() {
-            try {
-                std::string out;
-                int rc = lazyenv::Installer::runCommand(cmd + " --version 2>&1", out, 5000);
-                std::ostringstream os;
-                os << "{\"action\":\"verifyResult\","
-                   << "\"command\":\"" << jsonEscape(cmd) << "\","
-                   << "\"output\":\"" << jsonEscape(out.substr(0, 300)) << "\","
-                   << "\"success\":" << (rc == 0 ? "true" : "false") << "}";
-                g_webview.postMessage(os.str());
-            } catch (...) {}
-        }).detach();
-        return "{\"action\":\"verifyStarted\"}";
-    }
-
+    
     // ------ Migration Hub: Scan discovered local assets (4-in-1 preview) ------
     if (action == "scanDiscoveredAssets") {
         std::thread([]() {
@@ -1286,15 +1269,7 @@ std::string handleWebMessage(const std::string& message) {
         return "{\"action\":\"openPathInExplorerResult\",\"success\":true}";
     }
 
-    // ------ PATH Doctor: Prioritize a path in User PATH ------
-    if (action == "prioritizePath") {
-        std::string p = extractJsonValue(message, "path");
-        std::string snapId;
-        bool ok = lazyenv::PathDoctor::prioritizePath(p, g_rollback, snapId);
-        return std::format("{{\"action\":\"prioritizePathResult\",\"success\":{},\"snapshotId\":\"{}\"}}",
-                           ok ? "true" : "false", jsonEscape(snapId));
-    }
-
+    
     // ------ PATH Doctor: Switch Active Version with Cascading Env Vars ------
     if (action == "switchVersion") {
         std::string tool = extractJsonValue(message, "tool");
@@ -1391,25 +1366,7 @@ std::string handleWebMessage(const std::string& message) {
         return "{\"action\":\"exportDoctorReportStarted\"}";
     }
 
-    // ------ Relaunch LazyEnv as Administrator (UAC elevation) ------
-    if (action == "relaunchAsAdmin") {
-        wchar_t exePath[MAX_PATH];
-        GetModuleFileNameW(nullptr, exePath, MAX_PATH);
-
-        SHELLEXECUTEINFOW sei{};
-        sei.cbSize       = sizeof(sei);
-        sei.lpVerb       = L"runas";
-        sei.lpFile       = exePath;
-        sei.hwnd         = g_mainWindow;
-        sei.nShow        = SW_SHOWNORMAL;
-
-        if (ShellExecuteExW(&sei)) {
-            PostMessageW(g_mainWindow, WM_CLOSE, 0, 0);
-            return "{\"action\":\"relaunchSuccess\"}";
-        }
-        return "{\"action\":\"relaunchFailed\"}";
-    }
-
+    
     // ------ Mirror Accelerator: Get current registry URL ------
     if (action == "getMirrorSource") {
         std::string type = extractJsonValue(message, "type");
@@ -1481,19 +1438,7 @@ std::string handleWebMessage(const std::string& message) {
                            jsonEscape(pkgId), pin ? "true" : "false", ok ? "true" : "false");
     }
 
-    // ------ Updates Hub: Get pinned packages list ------
-    if (action == "getPinnedPackages") {
-        auto list = g_updateManager.getPinnedPackages();
-        std::ostringstream os;
-        os << "{\"action\":\"pinnedList\",\"packages\":[";
-        for (size_t i = 0; i < list.size(); ++i) {
-            os << "\"" << jsonEscape(list[i]) << "\"";
-            if (i + 1 < list.size()) os << ",";
-        }
-        os << "]}";
-        return os.str();
-    }
-
+    
     // ------ Check updates for environments ------
     if (action == "checkUpdates") {
         auto envList = parseEnvironmentsFromJson(message);
@@ -2024,14 +1969,7 @@ std::string handleWebMessage(const std::string& message) {
         return "";
     }
 
-    // ------ Check command ------
-    if (action == "checkCommand") {
-        std::string cmd = extractJsonValue(message, "command");
-        bool ok = lazyenv::Installer::isCommandAvailable(cmd);
-        return std::format("{{\"action\":\"commandCheck\",\"command\":\"{}\",\"available\":{}}}",
-                           jsonEscape(cmd), ok ? "true" : "false");
-    }
-
+    
     // ------ List environment variables (for Settings page) ------
     if (action == "listEnvVars") {
         std::string scope = extractJsonValue(message, "scope");
@@ -2173,15 +2111,7 @@ std::string handleWebMessage(const std::string& message) {
             ok ? "true" : "false", jsonEscape(name));
     }
 
-    // ------ Read env var ------
-    if (action == "readEnv") {
-        std::string name = extractJsonValue(message, "name");
-        bool sys = extractJsonBool(message, "system", false);
-        std::string val = lazyenv::RollbackManager::readEnvVariable(name, sys);
-        return std::format("{{\"action\":\"envValue\",\"name\":\"{}\",\"value\":\"{}\"}}",
-                           jsonEscape(name), jsonEscape(val));
-    }
-
+    
         return "{\"action\":\"error\",\"message\":\"Unknown action\"}";
     } catch (const std::exception& e) {
         return std::format("{{\"action\":\"error\",\"message\":\"{}\"}}", jsonEscape(e.what()));

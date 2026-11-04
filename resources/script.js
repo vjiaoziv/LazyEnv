@@ -199,12 +199,6 @@
                 }
                 break;
 
-            case "prioritizePathResult":
-                if (d.success) {
-                    showToast(t("doctor.prioritizeSuccess"), "success");
-                    sendNative({ action: "inspectPathDoctor" });
-                }
-                break;
 
             case "switchVersionResult":
                 if (d.success) {
@@ -251,7 +245,7 @@
                     showToast(t("doctor.moveSuccess"), "success");
                     sendNative({ action: "inspectPathDoctor" });
                 } else {
-                    showToast(t("doctor.relaunchFailed"), "warning");
+                    showToast(t("doctor.pathOpFailed"), "warning");
                 }
                 break;
 
@@ -269,13 +263,10 @@
                     showToast(t("doctor.removeSuccess"), "success");
                     sendNative({ action: "inspectPathDoctor" });
                 } else {
-                    showToast(t("doctor.relaunchFailed"), "warning");
+                    showToast(t("doctor.pathOpFailed"), "warning");
                 }
                 break;
 
-            case "relaunchFailed":
-                showToast(t("doctor.relaunchFailed"), "warning");
-                break;
 
             case "mirrorSourceInfo":
                 showMirrorDialog(d.type, d.currentUrl);
@@ -428,13 +419,6 @@
                 }
                 break;
 
-            case "verifyResult":
-                showDialogRaw(
-                    t("toast.verifyTitle", d.command),
-                    "<div class='log-panel' style='max-height:160px; font-size:13px; font-family:var(--font-mono);'>" + esc(d.output || "No output returned") + "</div>",
-                    [{ text: t("dialog.ok"), cls: "btn--accent" }]
-                );
-                break;
 
             case "upgradeResult":
                 if (d.success) {
@@ -456,9 +440,6 @@
                 renderChecks();
                 break;
 
-            case "wingetStatus":
-                renderCheckItem("winget", d.available);
-                break;
 
             case "catalogData":
                 catalog = d.packages || [];
